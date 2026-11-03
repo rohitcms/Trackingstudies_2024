@@ -198,6 +198,12 @@ void plotHist_CompareTwoSamples(TString fileName1 = "trk1.root", TString fileNam
           if (s1->GetBinContent(bx, by) != s2->GetBinContent(bx, by)) nDiffBins++;
       std::cout << "Events (vtxZ entries): " << (v1 ? v1->GetEntries() : -1) << " vs " << (v2 ? v2->GetEntries() : -1) << std::endl;
       std::cout << "hsim integral:         " << i1 << " vs " << i2 << std::endl;
+      if (i1 == 0 || i2 == 0) {
+        std::cout << "ERROR: hsim is EMPTY in at least one sample: no event reached HITrackCorrections."
+                  << " Check the TrigReport of the cmsRun log (hltMB, HITrackCorrections lines). Plots would be meaningless." << std::endl;
+        delete s1; delete s2;
+        return;
+      }
       if (nDiffBins == 0)
         std::cout << "hsim identical in both samples: same events and same TrackingParticles." << std::endl;
       else
