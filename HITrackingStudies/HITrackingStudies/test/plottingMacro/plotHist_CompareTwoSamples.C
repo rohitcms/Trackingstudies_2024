@@ -183,8 +183,11 @@ void plotHist_CompareTwoSamples(TString fileName1 = "trk1.root", TString fileNam
   // denominator (hsim) must then be identical. If it is not, the two jobs processed
   // different events (e.g. failed CRAB jobs) or the TrackingParticles differ.
   {
+    bool saveCent = useCentrality;
+    useCentrality = false; // all centralities: reconstructed centrality itself may differ between releases
     TH2* s1 = getHist2D(f1, "hsim", "check1");
     TH2* s2 = getHist2D(f2, "hsim", "check2");
+    useCentrality = saveCent;
     TH1* v1 = (TH1*) f1->Get(Form("%s/vtxZ", dirName));
     TH1* v2 = (TH1*) f2->Get(Form("%s/vtxZ", dirName));
     if (s1 && s2) {
