@@ -61,6 +61,11 @@ options.register ('globalTag',
                   VarParsing.VarParsing.multiplicity.singleton, # singleton or list
                   VarParsing.VarParsing.varType.string,          # string, int, bool or float
                   "globalTag")
+options.register ('eventList',
+                  "", # default value: empty means process all events
+                  VarParsing.VarParsing.multiplicity.singleton, # singleton or list
+                  VarParsing.VarParsing.varType.string,          # string, int, bool or float
+                  "text file with one run:lumi:event per line; only these events are processed")
 # Also available from VarParsing('analysis'):
 #   inputFiles=file1.root,file2.root  -> overrides the file lists in pbpb.py
 #   outputFile=name.root              -> overrides the TFileService file name
@@ -126,6 +131,9 @@ if options.runOverStreams == True :
     )
 if len(options.inputFiles) > 0 :
     process.source.fileNames = cms.untracked.vstring(options.inputFiles)
+if options.eventList != "" :
+    _evts = [l.strip() for l in open(options.eventList) if l.strip() and not l.startswith('#')]
+    process.source.eventsToProcess = cms.untracked.VEventRange(*_evts)
 
 ### centrality ###
 process.load("RecoHI.HiCentralityAlgos.CentralityBin_cfi")
