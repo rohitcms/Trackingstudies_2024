@@ -46,6 +46,7 @@ config.JobType.psetName    = 'run_PbPb_cfg.py'
 config.JobType.pyCfgParams = ['sample=MC_RecoDebug',
                               'n=-1',
                               'usePixelTrks=False',
+                              'applyHLT=False',   # 2023 HYDJET MC has no HLT_HIMinimumBiasHF1AND* path
                               'globalTag=%s' % s['globalTag'],
                               'outputFile=trk_%s.root' % which]
 # centrality table read by run_PbPb_cfg.py via sqlite_file:

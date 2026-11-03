@@ -61,6 +61,11 @@ options.register ('globalTag',
                   VarParsing.VarParsing.multiplicity.singleton, # singleton or list
                   VarParsing.VarParsing.varType.string,          # string, int, bool or float
                   "globalTag")
+options.register ('applyHLT',
+                  True, # default value
+                  VarParsing.VarParsing.multiplicity.singleton, # singleton or list
+                  VarParsing.VarParsing.varType.bool,          # string, int, bool or float
+                  "apply the hltMB trigger selection (set False for MC without the requested HLT paths)")
 options.register ('eventList',
                   "", # default value: empty means process all events
                   VarParsing.VarParsing.multiplicity.singleton, # singleton or list
@@ -242,6 +247,8 @@ process.hltMB = HLTrigger.HLTfilters.hltHighLevel_cfi.hltHighLevel.clone()
 process.hltMB.HLTPaths = ["HLT_HIMinimumBiasHF1AND*"] # for 2024 #
 process.hltMB.andOr = cms.bool(True)  # True = OR, False = AND between the HLT paths
 process.hltMB.throw = cms.bool(False) # throw exception on unknown path names
+if options.applyHLT == False :
+    process.hltMB = cms.EDFilter("HLTBool", result = cms.bool(True)) # pass-through: no trigger selection
 
 '''
 # event analysis
