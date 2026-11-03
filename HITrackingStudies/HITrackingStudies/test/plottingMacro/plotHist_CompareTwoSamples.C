@@ -179,6 +179,31 @@ void plotHist_CompareTwoSamples(TString fileName1 = "trk1.root", TString fileNam
     {"hsec", "hrec", "Non-primary reconstruction fraction","Secondary",      0.0, 0.1 },
   };
 
+  // Sanity check for samples sharing the same GEN-SIM(-DIGI): the simulated-particle
+  // denominator (hsim) must then be identical. If it is not, the two jobs processed
+  // different events (e.g. failed CRAB jobs) or the TrackingParticles differ.
+  {
+    TH2* s1 = getHist2D(f1, "hsim", "check1");
+    TH2* s2 = getHist2D(f2, "hsim", "check2");
+    TH1* v1 = (TH1*) f1->Get(Form("%s/vtxZ", dirName));
+    TH1* v2 = (TH1*) f2->Get(Form("%s/vtxZ", dirName));
+    if (s1 && s2) {
+      double i1 = s1->Integral(), i2 = s2->Integral();
+      int nDiffBins = 0;
+      for (int bx = 0; bx <= s1->GetNbinsX()+1; bx++)
+        for (int by = 0; by <= s1->GetNbinsY()+1; by++)
+          if (s1->GetBinContent(bx, by) != s2->GetBinContent(bx, by)) nDiffBins++;
+      std::cout << "Events (vtxZ entries): " << (v1 ? v1->GetEntries() : -1) << " vs " << (v2 ? v2->GetEntries() : -1) << std::endl;
+      std::cout << "hsim integral:         " << i1 << " vs " << i2 << std::endl;
+      if (nDiffBins == 0)
+        std::cout << "hsim identical in both samples: same events and same TrackingParticles." << std::endl;
+      else
+        std::cout << "WARNING: hsim differs in " << nDiffBins << " (eta,pT) bins. If the samples share GEN-SIM-DIGI,"
+                  << " the jobs did not process the same events (check failed CRAB jobs) or the TrackingParticles differ." << std::endl;
+      delete s1; delete s2;
+    }
+  }
+
   TFile* fout = new TFile(Form("%s/compareTwoSamples.root", outDir), "RECREATE");
 
   for (auto& rt : rates) {
