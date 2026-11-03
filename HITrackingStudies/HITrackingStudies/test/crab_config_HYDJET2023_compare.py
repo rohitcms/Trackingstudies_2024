@@ -19,11 +19,11 @@ from WMCore.Configuration import Configuration
 SAMPLES = {
     'prompt': {
         'dataset':   '/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_13_2_16_patch1_RECO_2026_10_27-4306658f456933c14c26b2d86ea9ab26/USER',
-        'globalTag': 'FILL_ME',  # GT used for the CMSSW_13_2_16_patch1 RECO
+        'globalTag': '132X_mcRun3_2023_realistic_HI_v12',  # same GT for both 2023 releases
     },
     'rereco': {
         'dataset':   '/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_17_0_0_pre7_RECO_2026_10_27-ff87f12058bfd417ba6d2a189e1266f4/USER',
-        'globalTag': 'FILL_ME',  # GT used for the CMSSW_17_0_0_pre7 RECO
+        'globalTag': '132X_mcRun3_2023_realistic_HI_v12',  # same GT for both 2023 releases
     },
     # 2024 PbPb HYDJET, same GEN-SIM and same GT for both releases
     'prompt2024': {
@@ -62,6 +62,11 @@ config.JobType.pyCfgParams = ['sample=MC_RecoDebug',
                               'outputFile=trk_%s.root' % which]
 # centrality table read by run_PbPb_cfg.py via sqlite_file:
 config.JobType.inputFiles  = ['CentralityTable_HFtowers200_DataPbPb_periHYDJETshape_run3v1302x04_offline_Nominal.db']
+# Optional: EVENTLIST=common_events.txt restricts both samples to the same run:lumi:event list
+# (needed when one production has failed jobs, so the two datasets do not hold the same events)
+if os.environ.get('EVENTLIST'):
+    config.JobType.inputFiles.append(os.environ['EVENTLIST'])
+    config.JobType.pyCfgParams.append('eventList=%s' % os.path.basename(os.environ['EVENTLIST']))
 config.JobType.maxMemoryMB = 4000
 
 config.section_('Data')
