@@ -56,6 +56,14 @@ options.register ('usePixelTrks',
                   VarParsing.VarParsing.multiplicity.singleton, # singleton or list
                   VarParsing.VarParsing.varType.bool,          # string, int, bool or float
                   "usePixelTrks")
+options.register ('globalTag',
+                  "", # default value: empty means use the GlobalTag hardcoded below
+                  VarParsing.VarParsing.multiplicity.singleton, # singleton or list
+                  VarParsing.VarParsing.varType.string,          # string, int, bool or float
+                  "globalTag")
+# Also available from VarParsing('analysis'):
+#   inputFiles=file1.root,file2.root  -> overrides the file lists in pbpb.py
+#   outputFile=name.root              -> overrides the TFileService file name
 options.parseArguments()
 
 from pbpb import pbpb_mc_recodebug as pbpb
@@ -86,6 +94,8 @@ process.options = cms.untracked.PSet(
 #process.TFileService = cms.Service("TFileService", fileName = cms.string('2023_data_MAOD_GeneralTracks_nhits2Check_True.root'))
 #process.TFileService = cms.Service("TFileService", fileName = cms.string('2024_Run387853_data_Streamer_MAOD_GeneralTracks.root'))
 process.TFileService = cms.Service("TFileService", fileName = cms.string('2024_HydjetMC_GeneralTracks_MAOD.root'))
+if options.outputFile != "output.root" :
+    process.TFileService.fileName = cms.string(options.outputFile)
 #process.TFileService = cms.Service("TFileService", fileName = cms.string('2024_Data__PixelTracks_New.root')
 #process.TFileService = cms.Service("TFileService", fileName = cms.string('HybridZS_2023Era_606_EvtFilter.root'))
 
@@ -114,6 +124,8 @@ if options.runOverStreams == True :
             fileNames =  cms.untracked.vstring(pbpb),
             skipEvents = cms.untracked.uint32(0)
     )
+if len(options.inputFiles) > 0 :
+    process.source.fileNames = cms.untracked.vstring(options.inputFiles)
 
 ### centrality ###
 process.load("RecoHI.HiCentralityAlgos.CentralityBin_cfi")
@@ -177,6 +189,8 @@ if (options.sample == "Data_Reco_AOD" or options.sample == "Data_MiniAOD"):
                  label = cms.untracked.string("HFtowers")
              ),
     ])
+if options.globalTag != "" :
+    process.GlobalTag.globaltag = cms.string(options.globalTag)
 ###
     
 #forest style analyzers (anaTrack module) (not affected by HITrackCorrections code)
