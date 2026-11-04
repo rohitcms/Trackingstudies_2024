@@ -1,5 +1,5 @@
 ///Compare track-level quantities between two samples, in the style:
-///  top pad    : normalized distribution (log y), sample1 = blue open circles, sample2 = red open squares
+///  top pad    : distribution (log y), sample1 = blue open circles, sample2 = red open squares
 ///  bottom pad : ratio sample1/sample2 (0-2), dashed line at 1
 ///Quantities: pT, eta, phi, number of hits, chi2/ndf/nlayers, algo, pTErr/pT, dz/sigma_dz, dxy/sigma_dxy
 ///
@@ -9,7 +9,11 @@
 ///
 ///Run:
 ///  root -l -b -q 'plotTrackQuantities_TwoSamples.C("trk_rereco.root","trk_prompt.root","ReReco","Prompt",0,10)'
-///Arguments: file1, file2, label1, label2, cent_min, cent_max (in %), [output directory]
+///Arguments: file1, file2, label1, label2, cent_min, cent_max (in %), [output directory], [normalization]
+///Normalization: "none"  = raw number of tracks per bin (default; use when both samples have the same events)
+///               "event" = tracks per event per bin
+///               "area"  = unit area per unit x (shape-only comparison)
+///e.g. root -l -b -q 'plotTrackQuantities_TwoSamples.C("a.root","b.root","A","B",0,10,"","area")'
 ///Output: one PDF+PNG per quantity, a 3x3 summary (TrackQuantities_summary.pdf/png) and all histograms in a ROOT file.
 
 #include "ROOT/RDataFrame.hxx"
@@ -53,6 +57,8 @@ const std::vector<TrkVar> trkVars = {
   {"v_dzsig",  "dzsig",    "dZ/#sigma_{dZ}",        100, -30.0,  30.0},
   {"v_dxysig", "dxysig",   "dXY/#sigma_{dXY}",      100, -30.0,  30.0},
 };
+
+TString yAxisTitle = "Number of tracks"; // set from the normalization option
 
 ///Auxiliary functions
 
@@ -104,7 +110,7 @@ void drawPanel(TH1D* h1, TH1D* h2, const TrkVar& v, const TString& label1, const
   if (ymin > ymax) ymin = 1e-3 * ymax;
 
   h1->SetTitle("");
-  h1->GetYaxis()->SetTitle("Normalized distribution");
+  h1->GetYaxis()->SetTitle(yAxisTitle);
   h1->GetYaxis()->SetRangeUser(0.5 * ymin, 5.0 * ymax);
   h1->GetYaxis()->SetTitleSize(0.065); h1->GetYaxis()->SetTitleOffset(1.15); h1->GetYaxis()->SetLabelSize(0.055);
   h1->GetXaxis()->SetLabelSize(0);
@@ -144,11 +150,12 @@ void drawPanel(TH1D* h1, TH1D* h2, const TrkVar& v, const TString& label1, const
 
 void plotTrackQuantities_TwoSamples(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
                                     TString label1 = "Sample 1", TString label2 = "Sample 2",
-                                    int cent_min = 0, int cent_max = 10, TString outDir = "")
+                                    int cent_min = 0, int cent_max = 10, TString outDir = "",
+                                    TString norm = "none")
 {
   gStyle->SetOptStat(0);
   gStyle->SetErrorX(0);
-  if (outDir == "") outDir = Form("TrackQuantities_cent%dto%d", cent_min, cent_max);
+  if (outDir == "") outDir = Form("TrackQuantities_cent%dto%d_%s", cent_min, cent_max, norm.Data());
   gSystem->Exec("mkdir -p " + outDir);
 
   // check inputs contain the track tree
@@ -186,13 +193,24 @@ void plotTrackQuantities_TwoSamples(TString fileName1 = "trk1.root", TString fil
   if (*nEv1 != *nEv2)
     std::cout << "WARNING: different number of events in the two samples; check they contain the same events." << std::endl;
 
-  // normalize to unit area per unit x (shape comparison)
+  // normalization
+  if      (norm == "none")  yAxisTitle = "Number of tracks";
+  else if (norm == "event") yAxisTitle = "Tracks per event";
+  else if (norm == "area")  yAxisTitle = "Normalized distribution";
+  else { std::cerr << "ERROR: normalization must be none, event or area (got " << norm << ")" << std::endl; return; }
+  std::cout << "Normalization: " << norm << std::endl;
+
   std::vector<TH1D*> h1s, h2s;
   for (size_t i = 0; i < trkVars.size(); i++) {
     TH1D* h1 = (TH1D*) H1[i]->Clone(); h1->SetDirectory(0);
     TH1D* h2 = (TH1D*) H2[i]->Clone(); h2->SetDirectory(0);
-    if (h1->Integral() > 0) h1->Scale(1.0 / h1->Integral(), "width");
-    if (h2->Integral() > 0) h2->Scale(1.0 / h2->Integral(), "width");
+    if (norm == "event") {
+      h1->Scale(1.0 / (double) *nEv1);
+      h2->Scale(1.0 / (double) *nEv2);
+    } else if (norm == "area") {
+      if (h1->Integral() > 0) h1->Scale(1.0 / h1->Integral(), "width");
+      if (h2->Integral() > 0) h2->Scale(1.0 / h2->Integral(), "width");
+    }
     h1s.push_back(h1); h2s.push_back(h2);
   }
 
