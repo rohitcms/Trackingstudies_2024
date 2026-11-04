@@ -66,6 +66,11 @@ options.register ('applyHLT',
                   VarParsing.VarParsing.multiplicity.singleton, # singleton or list
                   VarParsing.VarParsing.varType.bool,          # string, int, bool or float
                   "apply the hltMB trigger selection (set False for MC without the requested HLT paths)")
+options.register ('saveTree',
+                  False, # default value
+                  VarParsing.VarParsing.multiplicity.singleton, # singleton or list
+                  VarParsing.VarParsing.varType.bool,          # string, int, bool or float
+                  "MC_RecoDebug only: also run anaTrack and save the track tree (anaTrack/trackTree) for track-quantity plots")
 options.register ('eventList',
                   "", # default value: empty means process all events
                   VarParsing.VarParsing.multiplicity.singleton, # singleton or list
@@ -276,6 +281,8 @@ process.p = cms.Path(
     process.HITrackCorrections 
     #process.anaSeq ## comment if you want to save only histograms
 )
+if options.saveTree == True and options.sample == "MC_RecoDebug":
+    process.p += process.anaSeq # track tree for control plots (same events as HITrackCorrections)
 
 if (options.sample == "MC_Reco_AOD" or options.sample == "Data_Reco_AOD" or options.sample == "MC_MiniAOD" or options.sample == "Data_MiniAOD"):
     process.p = cms.Path(
