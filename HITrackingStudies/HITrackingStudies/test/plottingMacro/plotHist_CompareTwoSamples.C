@@ -153,6 +153,7 @@ void drawComparison(TH1D* h1, TH1D* h2, const TString& ytitle, double ymin, doub
   line->SetLineStyle(2); line->Draw();
 
   c->Print(Form("%s/%s.pdf", outDir, figName.Data()));
+  c->Print(Form("%s/%s.png", outDir, figName.Data())); // for slides
 
   fout->cd();
   h1->Write(); h2->Write(); r->Write();
