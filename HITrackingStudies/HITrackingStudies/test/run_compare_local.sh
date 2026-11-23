@@ -5,6 +5,10 @@
 #   ./run_compare_local.sh 2023 [NFILES] [OUTDIR]
 #   ./run_compare_local.sh 2024 [NFILES] [OUTDIR]
 # NFILES: number of files (job numbers 1..NFILES) per dataset, default 10
+# Optional environment variables:
+#   PLOTS_ONLY=1        only redo the plots from existing outputs in OUTDIR
+#   COPY_TO=/eos/user/r/<you>/somewhere   copy plots and logs there at the end (persistent, unlike /tmp)
+#   COPY_ROOT=1         with COPY_TO, also copy the cmsRun output ROOT files (large)
 # OUTDIR: default /tmp/$USER/compare<YEAR>
 #
 # Steps: file lists from DAS -> events common to both samples -> cmsRun on both (in parallel,
@@ -83,3 +87,13 @@ for c in "0 100" "0 10" "30 50" "70 90"; do
   root -l -b -q "plotTrackQuantities_TwoSamples.C(\"$OUT/trk_rereco.root\",\"$OUT/trk_prompt.root\",\"$RERECO_LABEL\",\"$PROMPT_LABEL\",$1,$2,\"$OUT/plots/TrackQuantities_cent${1}to${2}\")"
 done
 echo "Done. Plots in $OUT/plots/"
+
+# COPY_TO=/eos/user/... : copy plots, logs and printout-relevant files to a persistent place
+if [ -n "${COPY_TO:-}" ]; then
+  DEST="$COPY_TO/compare${YEAR}"
+  mkdir -p "$DEST"
+  cp -r "$OUT/plots" "$DEST/"
+  cp "$OUT"/*.log "$OUT"/*_files.txt "$OUT"/common_events.txt "$DEST/" 2>/dev/null || true
+  [ "${COPY_ROOT:-0}" = 1 ] && cp "$OUT"/trk_*.root "$DEST/"
+  echo "Copied to $DEST"
+fi
