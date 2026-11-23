@@ -451,17 +451,21 @@ TrackAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
   }
   //cout <<"SimTracks filled!"<<endl;
   pev_.nTrkTimesnVtx=pev_.nTrk*pev_.nVtx;
-  trackTree_->Fill();
-  //cout <<"Tree filled!"<<endl;
-  memset(&pev_,0,sizeof pev_);
 
-  int cbin = -1; 
+  // centrality must be set BEFORE filling the tree (it used to be set after the Fill,
+  // so each entry carried the previous event's centrality)
+  int cbin = -1;
   if( useCentrality_ ) {
      edm::Handle<int> centralityBin;
      iEvent.getByToken(centralitySrc_, centralityBin);
      cbin = *centralityBin;
-   }
-   centrality = cbin;
+  }
+  centrality = cbin;
+
+  trackTree_->Fill();
+  //cout <<"Tree filled!"<<endl;
+  memset(&pev_,0,sizeof pev_);
+
 
 }
 
