@@ -166,6 +166,7 @@ process.HITrackCorrections.applyTrackCuts = True
 if options.usePixelTrks == True:
     process.HITrackCorrections.applyTrackCuts = False
 process.HITrackCorrections.fillNTuples = False
+process.HITrackCorrections.fillEventTree = True # per-event counts for event-paired ratio uncertainties (small)
 process.HITrackCorrections.applyVertexZCut = False
 process.HITrackCorrections.doVtxReweighting = False
 process.HITrackCorrections.doCaloMatched = False

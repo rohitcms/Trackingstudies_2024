@@ -1,14 +1,14 @@
-### CRAB config to produce efficiency/fake-rate histograms (HITrackCorrections) for the
-### 2023 HYDJET prompt (CMSSW_13_2_16_patch1) vs rereco (CMSSW_17_0_0_pre7) comparison.
+### CRAB config for the PbPb HYDJET prompt-reco vs rereco (CMSSW_17_0_0) tracking comparison:
+### efficiency/fake-rate histograms + per-event tree (HITrackCorrections) and the anaTrack track tree.
 ###
-### Usage (from this test/ directory, in a release that can read BOTH samples, i.e. >= CMSSW_17_0_0_pre7):
-###   SAMPLE=prompt crab submit -c crab_config_HYDJET2023_compare.py
-###   SAMPLE=rereco crab submit -c crab_config_HYDJET2023_compare.py
+### Usage (from this test/ directory, in a release that can read BOTH samples, i.e. >= CMSSW_17_0_0):
+###   SAMPLE=prompt2023 crab submit -c crab_config_HYDJET2023_compare.py   (2023: CMSSW_13_2_16_patch1)
+###   SAMPLE=rereco2023 crab submit -c crab_config_HYDJET2023_compare.py   (2023: CMSSW_17_0_0)
 ###   SAMPLE=prompt2024 crab submit -c crab_config_HYDJET2023_compare.py   (2024: CMSSW_14_1_9_patch3)
-###   SAMPLE=rereco2024 crab submit -c crab_config_HYDJET2023_compare.py   (2024: CMSSW_17_0_0_pre7)
+###   SAMPLE=rereco2024 crab submit -c crab_config_HYDJET2023_compare.py   (2024: CMSSW_17_0_0)
 ###
 ### BEFORE SUBMITTING:
-###  1. Fill the GlobalTags below with the ones each sample was reconstructed with, e.g.
+###  1. Check the GlobalTags below match the ones each sample was reconstructed with, e.g.
 ###       edmProvDump <one file of the dataset> | grep -i -A2 globaltag
 ###  2. Set outLFNDirBase / storageSite to a place you can write to.
 ###  3. Run one job interactively first (see README in this directory / instructions from the analyst).
@@ -17,20 +17,30 @@ import os
 from WMCore.Configuration import Configuration
 
 SAMPLES = {
-    'prompt': {
+    # 2023 PbPb HYDJET: same GEN-SIM, DIGI and GT for prompt and rereco
+    'prompt2023': {
         'dataset':   '/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_13_2_16_patch1_RECO_2026_10_27-4306658f456933c14c26b2d86ea9ab26/USER',
-        'globalTag': '132X_mcRun3_2023_realistic_HI_v12',  # same GT for both 2023 releases
+        'globalTag': '132X_mcRun3_2023_realistic_HI_v12',
     },
-    'rereco': {
-        'dataset':   '/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_17_0_0_pre7_RECO_2026_10_27-ff87f12058bfd417ba6d2a189e1266f4/USER',
-        'globalTag': '132X_mcRun3_2023_realistic_HI_v12',  # same GT for both 2023 releases
+    'rereco2023': {   # CMSSW_17_0_0
+        'dataset':   '/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_17_0_0_RECO_2026_11_20-62a5f9c62f9bc79d872829fe458ba4d1/USER',
+        'globalTag': '132X_mcRun3_2023_realistic_HI_v12',
     },
-    # 2024 PbPb HYDJET, same GEN-SIM and same GT for both releases
+    # 2024 PbPb HYDJET: same GEN-SIM, DIGI and GT for prompt and rereco
     'prompt2024': {
         'dataset':   '/Hydjet_MinBias_TuneCELLO_5p36TeV_pythia8/phys_heavyions-HYDJET_2024Run3_CMSSW_14_1_9_patch3_RECO_2026_10_27-943058267aeaca9e9e8960ca73d2b070/USER',
         'globalTag': '141X_mcRun3_2024_realistic_HI_v20',
     },
-    'rereco2024': {
+    'rereco2024': {   # CMSSW_17_0_0
+        'dataset':   '/Hydjet_MinBias_TuneCELLO_5p36TeV_pythia8/phys_heavyions-HYDJET_2024Run3_CMSSW_17_0_0_RECO_2026_11_20-f9895636d4268b8129fbb0943a15b27a/USER',
+        'globalTag': '141X_mcRun3_2024_realistic_HI_v20',
+    },
+    # previous rereco round (CMSSW_17_0_0_pre7), kept for reference
+    'rereco2023_pre7': {
+        'dataset':   '/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_17_0_0_pre7_RECO_2026_10_27-ff87f12058bfd417ba6d2a189e1266f4/USER',
+        'globalTag': '132X_mcRun3_2023_realistic_HI_v12',
+    },
+    'rereco2024_pre7': {
         'dataset':   '/Hydjet_MinBias_TuneCELLO_5p36TeV_pythia8/phys_heavyions-HYDJET_2024Run3_CMSSW_17_0_0_pre7_RECO_2026_10_27-b3a7db92047aba45682b092f1c5750de/USER',
         'globalTag': '141X_mcRun3_2024_realistic_HI_v20',
     },
@@ -58,6 +68,7 @@ config.JobType.pyCfgParams = ['sample=MC_RecoDebug',
                               'n=-1',
                               'usePixelTrks=False',
                               'applyHLT=False',   # 2023 HYDJET MC has no HLT_HIMinimumBiasHF1AND* path
+                              'saveTree=True',    # track tree for the track-quantity comparison
                               'globalTag=%s' % s['globalTag'],
                               'outputFile=trk_%s.root' % which]
 # centrality table read by run_PbPb_cfg.py via sqlite_file:

@@ -32,6 +32,7 @@ HITrackCorrections = cms.EDAnalyzer('HITrackCorrectionAnalyzer',
     chi2nMax = cms.double(0.15),
     doMomRes = cms.bool(False),
     fillNTuples = cms.bool(False),
+    fillEventTree = cms.bool(False),
     useCentrality = cms.bool(False),
     centralitySrc = cms.InputTag("centralityBin","HFTowers")
 )

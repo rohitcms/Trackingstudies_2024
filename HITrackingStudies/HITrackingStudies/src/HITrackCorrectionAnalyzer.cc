@@ -106,11 +106,22 @@ class HITrackCorrectionAnalyzer : public edm::one::EDAnalyzer<edm::one::SharedRe
       bool doMomRes_;
 
       bool fillNTuples_;
+      bool fillEventTree_;
 
       bool useCentrality_;
       edm::EDGetTokenT<int> centralitySrc_;
       edm::EDGetTokenT<reco::CaloJetCollection> jetSrc_;
       edm::EDGetTokenT<reco::PFCandidateCollection> pfCandSrc_;
+
+      // per-event (eta,pt) counts for event-paired uncertainties when comparing two
+      // reconstructions of the same events (filled only if fillEventTree = True)
+      TTree * evTree_ = nullptr;
+      UInt_t evRun_ = 0, evLumi_ = 0;
+      ULong64_t evEvent_ = 0;
+      Int_t evCbin_ = 0;
+      Int_t evNBins_ = 0;
+      std::map<std::string,std::vector<float> > evCounts_;
+      void evFill(const std::string & name, double eta, double pt, double w);
 
 
 };
@@ -143,6 +154,7 @@ nhitsMin_(iConfig.getParameter<int>("nhitsMin")),
 chi2nMax_(iConfig.getParameter<double>("chi2nMax")),
 doMomRes_(iConfig.getParameter<bool>("doMomRes")),
 fillNTuples_(iConfig.getParameter<bool>("fillNTuples")),
+fillEventTree_(iConfig.getParameter<bool>("fillEventTree")),
 useCentrality_(iConfig.getParameter<bool>("useCentrality")),
 centralitySrc_(consumes<int>(iConfig.getParameter<edm::InputTag>("centralitySrc"))),
 jetSrc_(consumes<reco::CaloJetCollection>(iConfig.getParameter<edm::InputTag>("jetSrc"))),
@@ -169,6 +181,31 @@ pfCandSrc_(consumes<reco::PFCandidateCollection>(iConfig.getParameter<edm::Input
      trkTree_["sim"] = fs->make<TTree>("simTree","simTree");
      trkTree_["sim"]->Branch("simValues",&treeHelper_.b,treeHelper_.hiTrackLeafString.Data());
    }
+
+   if( fillEventTree_ )
+   {
+     // one entry per analyzed event; arrays use the global bin numbering of the (eta,pt) TH2
+     // histograms, including under/overflow: size (nEtaBins+2)*(nPtBins+2)
+     evNBins_ = (etaBins_.size()+1)*(ptBins_.size()+1);
+     evTree_ = fs->make<TTree>("evtTree","per-event (eta,pt) counts of hsim/heff/hmul/hrec/hfak/hsec");
+     evTree_->Branch("run",&evRun_,"run/i");
+     evTree_->Branch("lumi",&evLumi_,"lumi/i");
+     evTree_->Branch("event",&evEvent_,"event/l");
+     evTree_->Branch("cbin",&evCbin_,"cbin/I");
+     for( const char * name : {"hsim","heff","hmul","hrec","hfak","hsec"} )
+     {
+       evCounts_[name].assign(evNBins_,0.f);
+       evTree_->Branch(name, evCounts_[name].data(), Form("%s[%d]/F",name,evNBins_));
+     }
+   }
+}
+
+void
+HITrackCorrectionAnalyzer::evFill(const std::string & name, double eta, double pt, double w)
+{
+   if( !fillEventTree_ ) return;
+   int b = trkCorr2D_[name]->FindBin(eta, pt);
+   if( b >= 0 && b < evNBins_ ) evCounts_[name][b] += w;
 }
 
 HITrackCorrectionAnalyzer::~HITrackCorrectionAnalyzer()
@@ -260,6 +297,15 @@ HITrackCorrectionAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSet
      occ = cbin;
    } 
 
+   if( fillEventTree_ )
+   {
+     evRun_ = iEvent.id().run();
+     evLumi_ = iEvent.id().luminosityBlock();
+     evEvent_ = iEvent.id().event();
+     evCbin_ = cbin;
+     for( auto & c : evCounts_ ) std::fill(c.second.begin(), c.second.end(), 0.f);
+   }
+
    // ---------------------
    // loop through reco tracks to fill fake, reco, and secondary histograms
    // ---------------------
@@ -273,6 +319,7 @@ HITrackCorrectionAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSet
      if( ! caloMatched(*tr, iEvent, i) ) continue;
     
      trkCorr2D_["hrec"]->Fill(tr->eta(), tr->pt(), w);
+     evFill("hrec", tr->eta(), tr->pt(), w);
      trkCorr3D_["hrec3D"]->Fill(tr->eta(), tr->pt(), occ, w);
 
      // look for match to simulated particle, use first match if it exists
@@ -286,6 +333,7 @@ HITrackCorrectionAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSet
        if( mtp->status() < 0 ) 
        {
          trkCorr2D_["hsec"]->Fill(tr->eta(), tr->pt(), w);     
+         evFill("hsec", tr->eta(), tr->pt(), w);
          trkCorr3D_["hsec3D"]->Fill(tr->eta(), tr->pt(), occ, w);     
        }
      }
@@ -293,6 +341,7 @@ HITrackCorrectionAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSet
      {
        if( fillNTuples_) treeHelper_.Set(*tr, vsorted[0], cbin); 
        trkCorr2D_["hfak"]->Fill(tr->eta(), tr->pt(), w);
+       evFill("hfak", tr->eta(), tr->pt(), w);
        trkCorr3D_["hfak3D"]->Fill(tr->eta(), tr->pt(), occ, w);
      }
      if( fillNTuples_) trkTree_["rec"]->Fill(); 
@@ -310,6 +359,7 @@ HITrackCorrectionAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSet
      if(tp->status() < 0 || tp->charge()==0) continue; //only charged primaries
 
      trkCorr2D_["hsim"]->Fill(tp->eta(),tp->pt(), w);
+     evFill("hsim", tp->eta(), tp->pt(), w);
      trkCorr3D_["hsim3D"]->Fill(tp->eta(),tp->pt(), occ, w);
 
      // find number of matched reco tracks that pass cuts
@@ -340,11 +390,15 @@ HITrackCorrectionAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSet
      if( nrec>0 && fillNTuples_ ) treeHelper_.Set(*tp, *(rt.begin()->first.get()), vsorted[0], rt.size(), cbin);
      if( nrec==0 && fillNTuples_ ) treeHelper_.Set(*tp, cbin);
      if(nrec>0) trkCorr2D_["heff"]->Fill(tp->eta(),tp->pt(), w);
+     if(nrec>0) evFill("heff", tp->eta(), tp->pt(), w);
      if(nrec>0) trkCorr3D_["heff3D"]->Fill(tp->eta(),tp->pt(), occ, w);
      if(nrec>1) trkCorr2D_["hmul"]->Fill(tp->eta(),tp->pt(), w);
+     if(nrec>1) evFill("hmul", tp->eta(), tp->pt(), w);
      if(nrec>1) trkCorr3D_["hmul3D"]->Fill(tp->eta(),tp->pt(), occ, w);
      if( fillNTuples_) trkTree_["sim"]->Fill(); 
    }
+
+   if( fillEventTree_ ) evTree_->Fill();
 }
 
 bool
@@ -569,6 +623,7 @@ void HITrackCorrectionAnalyzer::fillDescriptions(edm::ConfigurationDescriptions&
    desc.add<double>("chi2nMax", 0.15);
    desc.add<bool>("doMomRes", false);
    desc.add<bool>("fillNTuples", false);
+   desc.add<bool>("fillEventTree", false);
    desc.add<bool>("useCentrality", false);
    desc.add<edm::InputTag>("centralitySrc", {"centralityBin","HFTowers"});
    descriptions.addWithDefaultLabel(desc);
