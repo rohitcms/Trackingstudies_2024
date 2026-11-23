@@ -43,6 +43,10 @@
 #include <algorithm>
 #include <cmath>
 
+// All helpers live in their own namespace: after cmsenv ROOT knows CMSSW classes with
+// generic names (e.g. a global 'Binning'), which would otherwise clash.
+namespace trkcmp {
+
 ///*** Important parameters
 const char* treeName = "anaTrack/trackTree";
 bool  hpOnly = true;        // use only highPurity tracks
@@ -200,7 +204,7 @@ void drawPanel(TH1D* h1, TH1D* h2, TH1D* r, const TrkVar& v, const TString& labe
   parent->cd();
 }
 
-void plotTrackQuantities_TwoSamples(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
+void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
                                     TString label1 = "Sample 1", TString label2 = "Sample 2",
                                     int cent_min = 0, int cent_max = 10, TString outDir = "")
 {
@@ -308,4 +312,13 @@ void plotTrackQuantities_TwoSamples(TString fileName1 = "trk1.root", TString fil
     c->Print(outDir + "/" + row.fig + ".png");
   }
   std::cout << "Plots saved in " << outDir << "/" << std::endl;
+}
+
+} // namespace trkcmp
+
+void plotTrackQuantities_TwoSamples(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
+                                    TString label1 = "Sample 1", TString label2 = "Sample 2",
+                                    int cent_min = 0, int cent_max = 10, TString outDir = "")
+{
+  trkcmp::run(fileName1, fileName2, label1, label2, cent_min, cent_max, outDir);
 }

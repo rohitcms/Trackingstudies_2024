@@ -44,6 +44,10 @@
 #include <algorithm>
 #include <cmath>
 
+// All helpers live in their own namespace: after cmsenv ROOT knows CMSSW classes with
+// generic names (e.g. a global 'Binning'), which would otherwise clash.
+namespace effcmp {
+
 ///*** Important parameters
 //projection ranges, same as plotHist2D.C
 //NOTE: with the default etaBins (... -1.2, -0.8, ... 0.8, 1.2 ...) "|eta| < 1" really is |eta| < 1.2
@@ -239,7 +243,7 @@ void drawPanel(TH1D* h1, TH1D* h2, TH1D* r, const Projection& P, const TString& 
   parent->cd();
 }
 
-void plotHist_CompareTwoSamples(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
+void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
                                 TString label1 = "Sample 1", TString label2 = "Sample 2",
                                 int cent_min = 0, int cent_max = 100, TString outDir = "")
 {
@@ -354,4 +358,13 @@ void plotHist_CompareTwoSamples(TString fileName1 = "trk1.root", TString fileNam
   }
   fout.Close();
   std::cout << "Plots saved in " << outDir << "/" << std::endl;
+}
+
+} // namespace effcmp
+
+void plotHist_CompareTwoSamples(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
+                                TString label1 = "Sample 1", TString label2 = "Sample 2",
+                                int cent_min = 0, int cent_max = 100, TString outDir = "")
+{
+  effcmp::run(fileName1, fileName2, label1, label2, cent_min, cent_max, outDir);
 }

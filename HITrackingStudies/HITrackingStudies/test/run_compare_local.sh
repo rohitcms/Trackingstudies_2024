@@ -31,11 +31,14 @@ esac
 RERECO_LABEL="17_0_0 (${YEAR})"
 
 [ -n "$CMSSW_BASE" ] || { echo "run cmsenv first"; exit 1; }
-voms-proxy-info -exists >/dev/null 2>&1 || { echo "no valid grid proxy: run voms-proxy-init -voms cms"; exit 1; }
+[ "${PLOTS_ONLY:-0}" = 1 ] || voms-proxy-info -exists >/dev/null 2>&1 || { echo "no valid grid proxy: run voms-proxy-init -voms cms"; exit 1; }
 TESTDIR=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$OUT"
 cd "$OUT"
 echo "Output in $OUT"
+
+# PLOTS_ONLY=1 ./run_compare_local.sh YEAR [NFILES] [OUTDIR] : only redo the plots from existing outputs
+if [ "${PLOTS_ONLY:-0}" != 1 ]; then
 
 # 1. file lists: job numbers 1..NFILES, as local EOS paths
 for s in prompt rereco; do
@@ -66,6 +69,8 @@ echo "cmsRun running (logs: $OUT/prompt.log, $OUT/rereco.log) ..."
 wait
 grep -E "Exception|TrigReport Events total|TrigReport.*(HITrackCorrections|anaTrack)" prompt.log rereco.log || true
 grep -q "Exception" prompt.log rereco.log && { echo "cmsRun failed, see logs"; exit 1; }
+
+fi # PLOTS_ONLY
 
 # 4. plots
 cd "$TESTDIR"/plottingMacro
