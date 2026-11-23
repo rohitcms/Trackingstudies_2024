@@ -309,7 +309,6 @@ void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
       drawPanel(h1s[k], h2s[k], rs[k], trkVars[k], label1, label2, centText);
     }
     c->Print(outDir + "/" + row.fig + ".pdf");
-    c->Print(outDir + "/" + row.fig + ".png");
   }
   std::cout << "Plots saved in " << outDir << "/" << std::endl;
 }

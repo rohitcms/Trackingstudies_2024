@@ -10,7 +10,7 @@
 ///Arguments: file1, file2, label1, label2, [cent_min, cent_max in %, default 0-100], [output directory]
 ///
 ///Output, one row of four panels per rate (ready for slides):
-///  Efficiency, FakeRate, MultipleReco, Secondary  .pdf/.png
+///  Efficiency, FakeRate, MultipleReco, Secondary  .pdf
 ///  panels: vs pT for |eta| < 1 and |eta| < 2.4, vs eta for pT > 0.4 and pT > 2 GeV (bin edges, see below)
 ///and all histograms in compareTwoSamples.root. Ratio panels are sample1 / sample2.
 ///
@@ -354,7 +354,6 @@ void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
     }
     printf("  %-14s %.3f\n", R.fig, median(errRatio));
     c->Print(outDir + "/" + R.fig + ".pdf");
-    c->Print(outDir + "/" + R.fig + ".png");
   }
   fout.Close();
   std::cout << "Plots saved in " << outDir << "/" << std::endl;
