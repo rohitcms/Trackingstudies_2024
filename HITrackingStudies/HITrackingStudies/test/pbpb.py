@@ -16,7 +16,11 @@
 #]
 
 # use this if you are giving txt file as input
-pbpb_mc_recodebug=open("2024_Hydjet_RecoDebug_GTV8.txt", "r").readlines()  
+# the list is looked up next to this file, so cmsRun can be started from any directory;
+# if it is missing the list is empty (use inputFiles=... on the command line instead)
+import os as _os
+_listFile = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "2024_Hydjet_RecoDebug_GTV8.txt")
+pbpb_mc_recodebug = [l.strip() for l in open(_listFile)] if _os.path.exists(_listFile) else []
 
 pbpb_mc_reco_aod=[
     #~~~~~~~~~~~~~For 2023~~~~~~~~~~~~~~~
