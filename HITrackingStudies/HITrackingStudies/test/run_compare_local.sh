@@ -9,6 +9,9 @@
 #   PLOTS_ONLY=1        only redo the plots from existing outputs in OUTDIR
 #   COPY_TO=/eos/user/r/<you>/somewhere   copy plots and logs there at the end (persistent, unlike /tmp)
 #   COPY_ROOT=1         with COPY_TO, also copy the cmsRun output ROOT files (large)
+#   TRACKS=pixel        pixel tracks (hiConformalPixelTracks, no track cuts) instead of highPurity generalTracks;
+#                       outputs get a _pixel suffix and plots a Pixel_ prefix, so both can live in one OUTDIR.
+#                       The file and event lists of an earlier run with the same NFILES are reused.
 # OUTDIR: default /tmp/$USER/compare<YEAR>
 #
 # Steps: file lists from DAS -> events common to both samples -> cmsRun on both (in parallel,
@@ -34,6 +37,13 @@ case $YEAR in
 esac
 RERECO_LABEL="17_0_0 (${YEAR})"
 
+TRACKS=${TRACKS:-general}
+case $TRACKS in
+  general) SUF="";       PFX="";       PIXOPT=False;;
+  pixel)   SUF="_pixel"; PFX="Pixel_"; PIXOPT=True;;
+  *) echo "TRACKS must be general or pixel"; exit 1;;
+esac
+
 [ -n "$CMSSW_BASE" ] || { echo "run cmsenv first"; exit 1; }
 [ "${PLOTS_ONLY:-0}" = 1 ] || voms-proxy-info -exists >/dev/null 2>&1 || { echo "no valid grid proxy: run voms-proxy-init -voms cms"; exit 1; }
 TESTDIR=$(cd "$(dirname "$0")" && pwd)
@@ -43,6 +53,10 @@ echo "Output in $OUT"
 
 # PLOTS_ONLY=1 ./run_compare_local.sh YEAR [NFILES] [OUTDIR] : only redo the plots from existing outputs
 if [ "${PLOTS_ONLY:-0}" != 1 ]; then
+
+if [ -s common_events.txt ] && [ -s prompt_files.txt ] && [ -s rereco_files.txt ] && [ "$(cat nfiles.txt 2>/dev/null)" = "$NFILES" ]; then
+  echo "Reusing file and event lists in $OUT (NFILES=$NFILES): $(wc -l < common_events.txt) common events"
+else
 
 # 1. file lists: job numbers 1..NFILES, as local EOS paths
 for s in prompt rereco; do
@@ -62,17 +76,29 @@ done
 comm -12 prompt_events.txt rereco_events.txt > common_events.txt
 echo "events: prompt $(wc -l < prompt_events.txt), rereco $(wc -l < rereco_events.txt), common $(wc -l < common_events.txt)"
 [ -s common_events.txt ] || { echo "no common events"; exit 1; }
+echo "$NFILES" > nfiles.txt
+
+fi # lists
+
+# check the track collection exists in both samples
+if [ "$TRACKS" = pixel ]; then
+  for s in prompt rereco; do
+    f=$(head -1 ${s}_files.txt | sed 's|^file:||')
+    edmDumpEventContent "$f" | grep -q hiConformalPixelTracks \
+      || { echo "hiConformalPixelTracks not found in $s file $f"; exit 1; }
+  done
+fi
 
 # 3. cmsRun on both samples in parallel, common events only
 cp "$TESTDIR"/CentralityTable_HFtowers200_DataPbPb_periHYDJETshape_run3v1302x04_offline_Nominal.db .
 for s in prompt rereco; do
-  cmsRun "$TESTDIR"/run_PbPb_cfg.py sample=MC_RecoDebug n=-1 applyHLT=False saveTree=True globalTag=$GT \
-    inputFiles_load=${s}_files.txt eventList=common_events.txt outputFile=trk_${s}.root > ${s}.log 2>&1 &
+  cmsRun "$TESTDIR"/run_PbPb_cfg.py sample=MC_RecoDebug n=-1 applyHLT=False saveTree=True globalTag=$GT usePixelTrks=$PIXOPT \
+    inputFiles_load=${s}_files.txt eventList=common_events.txt outputFile=trk_${s}${SUF}.root > ${s}${SUF}.log 2>&1 &
 done
-echo "cmsRun running (logs: $OUT/prompt.log, $OUT/rereco.log) ..."
+echo "cmsRun running ($TRACKS tracks; logs: $OUT/prompt${SUF}.log, $OUT/rereco${SUF}.log) ..."
 wait
-grep -E "Exception|TrigReport Events total|TrigReport.*(HITrackCorrections|anaTrack)" prompt.log rereco.log || true
-grep -q "Exception" prompt.log rereco.log && { echo "cmsRun failed, see logs"; exit 1; }
+grep -E "Exception|TrigReport Events total|TrigReport.*(HITrackCorrections|anaTrack)" prompt${SUF}.log rereco${SUF}.log || true
+if grep -q "Exception" prompt${SUF}.log rereco${SUF}.log; then echo "cmsRun failed, see logs"; exit 1; fi
 
 fi # PLOTS_ONLY
 
@@ -80,11 +106,11 @@ fi # PLOTS_ONLY
 cd "$TESTDIR"/plottingMacro
 for c in "0 100" "0 10" "70 90"; do
   set -- $c
-  root -l -b -q "plotHist_CompareTwoSamples.C(\"$OUT/trk_rereco.root\",\"$OUT/trk_prompt.root\",\"$RERECO_LABEL\",\"$PROMPT_LABEL\",$1,$2,\"$OUT/plots/Efficiency_cent${1}to${2}\")"
+  root -l -b -q "plotHist_CompareTwoSamples.C(\"$OUT/trk_rereco${SUF}.root\",\"$OUT/trk_prompt${SUF}.root\",\"$RERECO_LABEL\",\"$PROMPT_LABEL\",$1,$2,\"$OUT/plots/${PFX}Efficiency_cent${1}to${2}\",\"$TRACKS\")"
 done
 for c in "0 100" "0 10" "30 50" "70 90"; do
   set -- $c
-  root -l -b -q "plotTrackQuantities_TwoSamples.C(\"$OUT/trk_rereco.root\",\"$OUT/trk_prompt.root\",\"$RERECO_LABEL\",\"$PROMPT_LABEL\",$1,$2,\"$OUT/plots/TrackQuantities_cent${1}to${2}\")"
+  root -l -b -q "plotTrackQuantities_TwoSamples.C(\"$OUT/trk_rereco${SUF}.root\",\"$OUT/trk_prompt${SUF}.root\",\"$RERECO_LABEL\",\"$PROMPT_LABEL\",$1,$2,\"$OUT/plots/${PFX}TrackQuantities_cent${1}to${2}\",\"$TRACKS\")"
 done
 echo "Done. Plots in $OUT/plots/"
 
@@ -94,6 +120,6 @@ if [ -n "${COPY_TO:-}" ]; then
   mkdir -p "$DEST"
   cp -r "$OUT/plots" "$DEST/"
   cp "$OUT"/*.log "$OUT"/*_files.txt "$OUT"/common_events.txt "$DEST/" 2>/dev/null || true
-  [ "${COPY_ROOT:-0}" = 1 ] && cp "$OUT"/trk_*.root "$DEST/"
+  if [ "${COPY_ROOT:-0}" = 1 ]; then cp "$OUT"/trk_*.root "$DEST/"; fi
   echo "Copied to $DEST"
 fi

@@ -7,7 +7,9 @@
 ///
 ///Run:
 ///  root -l -b -q 'plotHist_CompareTwoSamples.C("trk_rereco.root","trk_prompt.root","ReReco","Prompt")'
-///Arguments: file1, file2, label1, label2, [cent_min, cent_max in %, default 0-100], [output directory]
+///Arguments: file1, file2, label1, label2, [cent_min, cent_max in %, default 0-100], [output directory], [track type]
+///Track type ("general" or "pixel") only sets the label on the plots; the track collection and cuts are chosen
+///in cmsRun (usePixelTrks=True: hiConformalPixelTracks, no track cuts).
 ///
 ///Output, one row of four panels per rate (ready for slides):
 ///  Efficiency, FakeRate, MultipleReco, Secondary  .pdf
@@ -60,6 +62,7 @@ double ptPlotMax = 100.;
 double ratioHalfRange = -1; // ratio panel shown as 1 +- this; <= 0 means automatic
 
 const char* dirName = "HITrackCorrections";
+TString trackText = "";     // track-type label drawn on the plots
 
 ///Auxiliary types and functions
 
@@ -198,7 +201,7 @@ void drawPanel(TH1D* h1, TH1D* h2, TH1D* r, const Projection& P, const TString& 
   if (isEff) ymax = std::max(ymax, 1.0);
   h1->SetTitle("");
   h1->GetXaxis()->SetRangeUser(xlo, xhi);
-  h1->GetYaxis()->SetRangeUser(0.0, ymax > 0 ? 1.35 * ymax : 1.0);
+  h1->GetYaxis()->SetRangeUser(0.0, ymax > 0 ? 1.5 * ymax : 1.0);
   h1->GetYaxis()->SetTitle(ytitle);
   h1->GetYaxis()->SetTitleSize(0.06); h1->GetYaxis()->SetTitleOffset(1.3); h1->GetYaxis()->SetLabelSize(0.055);
   h1->GetXaxis()->SetLabelSize(0);
@@ -209,6 +212,7 @@ void drawPanel(TH1D* h1, TH1D* h2, TH1D* r, const Projection& P, const TString& 
   TLatex tl; tl.SetNDC(); tl.SetTextFont(42); tl.SetTextSize(0.05);
   tl.DrawLatex(0.21, 0.86, P.text);
   tl.DrawLatex(0.21, 0.79, centText);
+  tl.DrawLatex(0.21, 0.72, trackText);
   TLegend* leg = new TLegend(0.55, 0.76, 0.94, 0.90);
   leg->SetBorderSize(0); leg->SetFillStyle(0); leg->SetTextFont(42); leg->SetTextSize(0.05);
   leg->AddEntry(h1, label1, "lep");
@@ -245,8 +249,11 @@ void drawPanel(TH1D* h1, TH1D* h2, TH1D* r, const Projection& P, const TString& 
 
 void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
                                 TString label1 = "Sample 1", TString label2 = "Sample 2",
-                                int cent_min = 0, int cent_max = 100, TString outDir = "")
+                                int cent_min = 0, int cent_max = 100, TString outDir = "",
+                                TString trackType = "general")
 {
+  if (trackType != "general" && trackType != "pixel") { std::cerr << "ERROR: track type must be general or pixel" << std::endl; return; }
+  trackText = (trackType == "general") ? "highPurity general tracks" : "Pixel tracks";
   gStyle->SetOptStat(0);
   gStyle->SetErrorX(0);
   if (outDir == "") outDir = Form("CompareTwoSamples_cent%dto%d", cent_min, cent_max);
@@ -363,7 +370,8 @@ void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
 
 void plotHist_CompareTwoSamples(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
                                 TString label1 = "Sample 1", TString label2 = "Sample 2",
-                                int cent_min = 0, int cent_max = 100, TString outDir = "")
+                                int cent_min = 0, int cent_max = 100, TString outDir = "",
+                                TString trackType = "general")
 {
-  effcmp::run(fileName1, fileName2, label1, label2, cent_min, cent_max, outDir);
+  effcmp::run(fileName1, fileName2, label1, label2, cent_min, cent_max, outDir, trackType);
 }

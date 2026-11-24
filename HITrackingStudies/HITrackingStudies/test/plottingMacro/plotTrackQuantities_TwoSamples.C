@@ -5,6 +5,7 @@
 ///  TrackKinematics : pT, eta, phi
 ///  TrackHits       : number of hits, chi2/ndf/nlayers, algo
 ///  TrackResolution : pTErr/pT, dz/sigma_dz, dxy/sigma_dxy
+///  TrackPixel      : number of pixel layers, number of pixel hits, number of tracker layers
 ///and all histograms in trackQuantities.root.
 ///Sample1 = blue open circles, sample2 = red open squares.
 ///
@@ -18,7 +19,9 @@
 ///  cmsRun run_PbPb_cfg.py sample=MC_RecoDebug saveTree=True ...
 ///Run:
 ///  root -l -b -q 'plotTrackQuantities_TwoSamples.C("trk_rereco.root","trk_prompt.root","ReReco","Prompt",0,10)'
-///Arguments: file1, file2, label1, label2, cent_min, cent_max (in %), [output directory]
+///Arguments: file1, file2, label1, label2, cent_min, cent_max (in %), [output directory], [track type]
+///Track type: "general" (default) = highPurity generalTracks; "pixel" = all tracks in the tree, for files made
+///with cmsRun ... usePixelTrks=True (pixel tracks have no highPurity flag)
 
 #include "TFile.h"
 #include "TTree.h"
@@ -42,6 +45,7 @@
 #include <set>
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 // All helpers live in their own namespace: after cmsenv ROOT knows CMSSW classes with
 // generic names (e.g. a global 'Binning'), which would otherwise clash.
@@ -49,14 +53,15 @@ namespace trkcmp {
 
 ///*** Important parameters
 const char* treeName = "anaTrack/trackTree";
-bool  hpOnly = true;        // use only highPurity tracks
+bool  hpOnly = true;        // use only highPurity tracks (set from the track type argument)
+TString trackText = "";     // track-type label drawn on the plots
 float ptMin  = 0.0;         // pT range of the selected tracks (GeV)
 float ptMax  = 99999.;
 double ratioHalfRange = -1; // ratio panel shown as 1 +- this; <= 0 means automatic
 
 struct TrkVar { const char* name; const char* xtitle; int nbins; double xmin, xmax; };
 
-enum { kPt, kEta, kPhi, kNHit, kChi2, kAlgo, kPtRes, kDzSig, kDxySig, kNVars };
+enum { kPt, kEta, kPhi, kNHit, kChi2, kAlgo, kPtRes, kDzSig, kDxySig, kNPixLay, kNPixHit, kNLay, kNVars };
 
 const std::vector<TrkVar> trkVars = {
   {"pt",     "p_{T} (GeV)",           100,   0.0,  10.0},
@@ -68,6 +73,9 @@ const std::vector<TrkVar> trkVars = {
   {"ptres",  "p_{T} Err/p_{T}",       100,   0.0,   0.3},
   {"dzsig",  "dZ/#sigma_{dZ}",        100, -30.0,  30.0},
   {"dxysig", "dXY/#sigma_{dXY}",      100, -30.0,  30.0},
+  {"npixlayers", "Number of pixel layers",   8, 0.0,  8.0},
+  {"npixhits",   "Number of pixel hits",    12, 0.0, 12.0},
+  {"nlayers",    "Number of tracker layers", 25, 0.0, 25.0},
 };
 
 struct Row { const char* fig; int vars[3]; };
@@ -75,6 +83,7 @@ const std::vector<Row> rows = {
   {"TrackKinematics", {kPt, kEta, kPhi}},
   {"TrackHits",       {kNHit, kChi2, kAlgo}},
   {"TrackResolution", {kPtRes, kDzSig, kDxySig}},
+  {"TrackPixel",      {kNPixLay, kNPixHit, kNLay}},
 };
 
 typedef std::array<unsigned long long,3> EvtKey; // run, lumi, event
@@ -95,12 +104,19 @@ bool readSample(const TString& fileName, int cent_min, int cent_max, std::map<Ev
               << ". For sample=MC_RecoDebug, rerun cmsRun with saveTree=True." << std::endl;
     return false;
   }
-  TTreeReader r(treeName, f);
+  TTree* t = (TTree*) f->Get(treeName);
+  const bool hasPixHit = t->GetBranch("trkNPixHit") != nullptr;
+  if (!hasPixHit) std::cout << "WARNING: no trkNPixHit branch in " << fileName
+                            << " (made with an older TrackAnalyzer); the pixel-hit plot will be empty" << std::endl;
+  TTreeReader r(t);
   TTreeReaderValue<int> run(r, "nRun"), lumi(r, "nLumi"), evt(r, "nEv"), cent(r, "centrality");
   TTreeReaderArray<float> pt(r, "trkPt"), eta(r, "trkEta"), phi(r, "trkPhi"), chi2(r, "trkChi2"),
                           ptErr(r, "trkPtError"), dz(r, "trkDz1"), dzErr(r, "trkDzError1"),
                           dxy(r, "trkDxy1"), dxyErr(r, "trkDxyError1");
   TTreeReaderArray<UChar_t> nhit(r, "trkNHit"), algo(r, "trkAlgo"), ndof(r, "trkNdof"), nlay(r, "trkNlayer");
+  TTreeReaderArray<UChar_t> npixlay(r, "trkNpixellayer");
+  std::unique_ptr<TTreeReaderArray<UChar_t>> npixhit;
+  if (hasPixHit) npixhit.reset(new TTreeReaderArray<UChar_t>(r, "trkNPixHit"));
   TTreeReaderArray<bool> hp(r, "highPurity");
 
   std::vector<TAxis> axes;
@@ -129,6 +145,9 @@ bool readSample(const TString& fileName, int cent_min, int cent_max, std::map<Ev
       val[kPtRes]  = ptErr[i] / pt[i];
       val[kDzSig]  = dz[i] / dzErr[i];
       val[kDxySig] = dxy[i] / dxyErr[i];
+      val[kNPixLay] = npixlay[i];
+      val[kNPixHit] = hasPixHit ? (double) (*npixhit)[i] : std::nan("");
+      val[kNLay]    = nlay[i];
       for (int k = 0; k < kNVars; k++) {
         if (!std::isfinite(val[k])) continue;
         ed.counts[varOffset[k] + axes[k].FindFixBin(val[k])] += 1.f;
@@ -175,6 +194,7 @@ void drawPanel(TH1D* h1, TH1D* h2, TH1D* r, const TrkVar& v, const TString& labe
 
   TLatex tl; tl.SetNDC(); tl.SetTextFont(42); tl.SetTextSize(0.05);
   tl.DrawLatex(0.20, 0.86, centText);
+  tl.DrawLatex(0.20, 0.79, trackText);
   TLegend* leg = new TLegend(0.55, 0.76, 0.94, 0.90);
   leg->SetBorderSize(0); leg->SetFillStyle(0); leg->SetTextFont(42); leg->SetTextSize(0.05);
   leg->AddEntry(h1, label1, "lep");
@@ -206,8 +226,12 @@ void drawPanel(TH1D* h1, TH1D* h2, TH1D* r, const TrkVar& v, const TString& labe
 
 void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
                                     TString label1 = "Sample 1", TString label2 = "Sample 2",
-                                    int cent_min = 0, int cent_max = 10, TString outDir = "")
+                                    int cent_min = 0, int cent_max = 10, TString outDir = "",
+                                    TString trackType = "general")
 {
+  if (trackType != "general" && trackType != "pixel") { std::cerr << "ERROR: track type must be general or pixel" << std::endl; return; }
+  hpOnly = (trackType == "general");
+  trackText = hpOnly ? "highPurity general tracks" : "Pixel tracks";
   gStyle->SetOptStat(0);
   gStyle->SetErrorX(0);
   if (outDir == "") outDir = Form("TrackQuantities_cent%dto%d", cent_min, cent_max);
@@ -317,7 +341,8 @@ void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
 
 void plotTrackQuantities_TwoSamples(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
                                     TString label1 = "Sample 1", TString label2 = "Sample 2",
-                                    int cent_min = 0, int cent_max = 10, TString outDir = "")
+                                    int cent_min = 0, int cent_max = 10, TString outDir = "",
+                                    TString trackType = "general")
 {
-  trkcmp::run(fileName1, fileName2, label1, label2, cent_min, cent_max, outDir);
+  trkcmp::run(fileName1, fileName2, label1, label2, cent_min, cent_max, outDir, trackType);
 }

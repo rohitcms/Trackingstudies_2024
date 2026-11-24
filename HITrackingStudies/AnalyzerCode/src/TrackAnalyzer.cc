@@ -135,6 +135,7 @@ struct TrackEvent{
   unsigned char trkNlayer[MAXTRACKS];
   int trkNlayer3D[MAXTRACKS];
   unsigned char trkNpixellayer[MAXTRACKS];
+  unsigned char trkNPixHit[MAXTRACKS];
   bool trkQual[MAXQUAL][MAXTRACKS];
   float trkChi2[MAXTRACKS];
   float trkChi2hit1D[MAXTRACKS];
@@ -704,6 +705,7 @@ TrackAnalyzer::fillTracks(const edm::Event& iEvent, const edm::EventSetup& iSetu
     pev_.trkNlayer[pev_.nTrk] = etrk.hitPattern().trackerLayersWithMeasurement();
     pev_.trkNlayer3D[pev_.nTrk] = etrk.hitPattern().pixelLayersWithMeasurement() + etrk.hitPattern().numberOfValidStripLayersWithMonoAndStereo();
     pev_.trkNpixellayer[pev_.nTrk] = etrk.hitPattern().pixelLayersWithMeasurement();
+    pev_.trkNPixHit[pev_.nTrk] = etrk.hitPattern().numberOfValidPixelHits();
 
     pev_.trkAlgo[pev_.nTrk] = etrk.algo();
     pev_.trkOriginalAlgo[pev_.nTrk] = etrk.originalAlgo();
@@ -1185,6 +1187,7 @@ TrackAnalyzer::beginJob()
   trackTree_->Branch("trkNHit",&pev_.trkNHit,"trkNHit[nTrk]/b");
   trackTree_->Branch("trkNlayer",&pev_.trkNlayer,"trkNlayer[nTrk]/b");
   trackTree_->Branch("trkNpixellayer",&pev_.trkNpixellayer,"trkNpixellayer[nTrk]/b");
+  trackTree_->Branch("trkNPixHit",&pev_.trkNPixHit,"trkNPixHit[nTrk]/b");
   trackTree_->Branch("trkEta",&pev_.trkEta,"trkEta[nTrk]/F");
   trackTree_->Branch("trkPhi",&pev_.trkPhi,"trkPhi[nTrk]/F");
   trackTree_->Branch("trkCharge",&pev_.trkCharge,"trkCharge[nTrk]/I");
