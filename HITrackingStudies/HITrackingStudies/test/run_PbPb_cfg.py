@@ -239,7 +239,16 @@ if (options.sample == "MC_Reco_AOD" or options.sample == "MC_MiniAOD" or options
     process.anaTrack.doSimVertex = False
     process.anaTrack.fillSimTrack = False
     if (options.sample == "MC_MiniAOD" or options.sample == "Data_MiniAOD"):
-        process.load('HITrackingStudies.AnalyzerCode.unpackedTracksAndVertices_cfi')
+        # defined here instead of loading the cfi generated at build time from fillDescriptions
+        # (HITrackingStudies.AnalyzerCode.unpackedTracksAndVertices_cfi), which is not always produced
+        process.unpackedTracksAndVertices = cms.EDProducer("TrackAndVertexUnpacker",
+            packedCandidates = cms.VInputTag(cms.InputTag("packedPFCandidates"), cms.InputTag("lostTracks"), cms.InputTag("lostTracks","eleTracks")),
+            packedCandidateNormChi2Map = cms.VInputTag(cms.InputTag("packedPFCandidateTrackChi2"), cms.InputTag("lostTrackChi2"), cms.InputTag("")),
+            primaryVertices = cms.InputTag("offlineSlimmedPrimaryVertices"),
+            secondaryVertices = cms.InputTag("slimmedSecondaryVertices"),
+            dedxEstimators = cms.VInputTag(cms.InputTag("dedxEstimator","dedxAllLikelihood")),
+            recoverTracks = cms.bool(False)
+        )
         process.anaTrack.trackSrc = 'unpackedTracksAndVertices'
         process.anaTrack.vertexSrc = cms.vstring(['unpackedTracksAndVertices'])
         process.anaTrack.doMVA = cms.bool(False)
