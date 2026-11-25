@@ -97,18 +97,29 @@ if [ "${PLOTS_ONLY:-0}" != 1 ]; then
 if [ -s common_events.txt ] && [ -s ${N1}_files.txt ] && [ -s ${N2}_files.txt ] && [ "$(cat nfiles.txt 2>/dev/null)" = "$NFILES" ]; then
   echo "Reusing file and event lists in $OUT (NFILES=$NFILES): $(wc -l < common_events.txt) common events"
 else
-  for s in $N1 $N2; do
+  # MC: both samples by job number (same GEN-SIM splitting).
+  # data: sample 1 by job number, sample 2 = the files that contain sample 1's run/lumi sections,
+  #       because two productions of the same data split the events into files differently.
+  list_events() { for f in $(sed 's|^file:||' $1_files.txt); do edmFileUtil -e "$f"; done \
+                    | awk 'NF==4 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $3+0 > 0 {print $1":"$2":"$3}' | sort > $1_events.txt; }
+  SAMPLES_BY_JOB="$N1 $N2"; [ $KIND = data ] && SAMPLES_BY_JOB="$N1"
+  for s in $SAMPLES_BY_JOB; do
     ds=$DS1; [ $s = $N2 ] && ds=$DS2
     dasgoclient -query="file dataset=$ds instance=prod/phys03" \
       | awk -v n="$NFILES" '{ m = $0; sub(/.*_/, "", m); sub(/\.root$/, "", m); if (m ~ /^[0-9]+$/ && m+0 >= 1 && m+0 <= n) print }' \
       | sort -V | sed 's|^|file:/eos/cms|' > ${s}_files.txt
     echo "$s: $(wc -l < ${s}_files.txt) files"
     [ -s ${s}_files.txt ] || { echo "no files found for $s"; exit 1; }
+    list_events $s
   done
-  for s in $N1 $N2; do
-    for f in $(sed 's|^file:||' ${s}_files.txt); do edmFileUtil -e "$f"; done \
-      | awk 'NF==4 && $3>0 {print $1":"$2":"$3}' | sort > ${s}_events.txt
-  done
+  if [ $KIND = data ]; then
+    cut -d: -f1,2 ${N1}_events.txt | sort -u > ${N1}_lumis.txt
+    echo "$N1: $(wc -l < ${N1}_lumis.txt) lumi sections in runs $(cut -d: -f1 ${N1}_lumis.txt | sort -u | tr '\n' ' ')"
+    python3 "$TESTDIR"/select_files_by_lumi.py ${N1}_lumis.txt $DS2 prod/phys03 | sed 's|^|file:/eos/cms|' > ${N2}_files.txt
+    echo "$N2: $(wc -l < ${N2}_files.txt) files selected by run/lumi"
+    [ -s ${N2}_files.txt ] || { echo "no files of $N2 contain these run/lumi sections"; exit 1; }
+    list_events $N2
+  fi
   comm -12 ${N1}_events.txt ${N2}_events.txt > common_events.txt
   echo "events: $N1 $(wc -l < ${N1}_events.txt), $N2 $(wc -l < ${N2}_events.txt), common $(wc -l < common_events.txt)"
   [ -s common_events.txt ] || { echo "no common events"; exit 1; }
