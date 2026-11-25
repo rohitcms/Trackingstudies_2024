@@ -66,6 +66,11 @@ options.register ('applyHLT',
                   VarParsing.VarParsing.multiplicity.singleton, # singleton or list
                   VarParsing.VarParsing.varType.bool,          # string, int, bool or float
                   "apply the hltMB trigger selection (set False for MC without the requested HLT paths)")
+options.register ('trackMVA',
+                  True, # default value
+                  VarParsing.VarParsing.multiplicity.singleton, # singleton or list
+                  VarParsing.VarParsing.varType.bool,          # string, int, bool or float
+                  "anaTrack: read generalTracks:MVAValues (set False if the input does not contain them)")
 options.register ('saveTree',
                   False, # default value
                   VarParsing.VarParsing.multiplicity.singleton, # singleton or list
@@ -226,6 +231,8 @@ process.anaTrack.fillSimTrack = True
 process.anaTrack.doPFMatching = False
 process.anaTrack.doHighestPtVertex = False
 process.anaTrack.doTrackVtxWImpPar = False
+if options.trackMVA == False:
+    process.anaTrack.doMVA = cms.bool(False)
 process.anaSeq = cms.Sequence(process.anaTrack)
 if (options.sample == "MC_Reco_AOD" or options.sample == "MC_MiniAOD" or options.sample == "Data_Reco_AOD" or options.sample == "Data_MiniAOD"):
     process.anaTrack.doSimTrack = False

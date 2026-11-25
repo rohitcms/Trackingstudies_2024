@@ -1,56 +1,80 @@
 #!/bin/bash
-# Local prompt-reco vs rereco (CMSSW_17_0_0) tracking comparison for one year, on lxplus.
+# Local tracking comparison of two reconstructions of the same events, for one year, on lxplus.
 #
 # Usage (from this test/ directory, after cmsenv in CMSSW_17_0_0 or later, with a valid grid proxy):
-#   ./run_compare_local.sh 2023 [NFILES] [OUTDIR]
-#   ./run_compare_local.sh 2024 [NFILES] [OUTDIR]
-# NFILES: number of files (job numbers 1..NFILES) per dataset, default 10
+#   [COMPARE=...] [TRACKS=...] ./run_compare_local.sh <YEAR> [NFILES] [OUTDIR]
+#     YEAR   : 2023 or 2024
+#     NFILES : number of files (job numbers 1..NFILES) per dataset, default 10
+#     OUTDIR : default /tmp/$USER/compare<YEAR>[_<COMPARE>]
+#
+# COMPARE (sample 1 = blue = numerator of the ratios, sample 2 = red = reference):
+#   prompt      (default) MC  : rereco CMSSW_17_0_0           vs prompt reco (13_2_16_patch1 / 14_1_9_patch3)
+#   pre7                  MC  : rereco CMSSW_17_0_0           vs rereco CMSSW_17_0_0_pre7
+#   data_prompt           data: rereco 17_0_0 with prompt GT  vs prompt reco
+#   data_gt               data: rereco 17_0_0 with offline GT vs rereco 17_0_0 with prompt GT
+# MC   : efficiency/fake-rate plots (HITrackCorrections) + track-quantity plots
+# data : track-quantity plots only (no simulated truth)
+#
 # Optional environment variables:
-#   PLOTS_ONLY=1        only redo the plots from existing outputs in OUTDIR
+#   TRACKS=pixel   pixel tracks instead of highPurity generalTracks (outputs *_pixel, plots Pixel_*)
+#   PLOTS_ONLY=1   only redo the plots from existing outputs in OUTDIR
 #   COPY_TO=/eos/user/r/<you>/somewhere   copy plots and logs there at the end (persistent, unlike /tmp)
-#   COPY_ROOT=1         with COPY_TO, also copy the cmsRun output ROOT files (large)
-#   TRACKS=pixel        pixel tracks (hiConformalPixelTracks, no track cuts) instead of highPurity generalTracks;
-#                       outputs get a _pixel suffix and plots a Pixel_ prefix, so both can live in one OUTDIR.
-#                       The file and event lists of an earlier run with the same NFILES are reused.
-#   COMPARE=pre7        compare CMSSW_17_0_0 with the earlier CMSSW_17_0_0_pre7 rereco instead of prompt reco
-#                       (default OUTDIR /tmp/$USER/compare<YEAR>_pre7)
-# OUTDIR: default /tmp/$USER/compare<YEAR>
+#   COPY_ROOT=1    with COPY_TO, also copy the cmsRun output ROOT files (large)
+#   GT_1=... GT_2=...  override the GlobalTag used in cmsRun for sample 1 / sample 2
+# File and event lists of an earlier run in the same OUTDIR with the same NFILES are reused.
 #
 # Steps: file lists from DAS -> events common to both samples -> cmsRun on both (in parallel,
-# only the common events) -> efficiency/fake-rate and track-quantity plots.
+# only the common events) -> plots.
 set -e
 
 YEAR=${1:?give the year: 2023 or 2024}
 NFILES=${2:-10}
 COMPARE=${COMPARE:-prompt}
-case $COMPARE in
-  prompt) OUT=${3:-/tmp/$USER/compare${YEAR}};;
-  pre7)   OUT=${3:-/tmp/$USER/compare${YEAR}_pre7};;
-  *) echo "COMPARE must be prompt or pre7"; exit 1;;
-esac
 
+# ---------------------------------------------------------------- datasets
 case $YEAR in
   2023)
-    PROMPT_DS=/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_13_2_16_patch1_RECO_2026_10_27-4306658f456933c14c26b2d86ea9ab26/USER
-    RERECO_DS=/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_17_0_0_RECO_2026_11_20-62a5f9c62f9bc79d872829fe458ba4d1/USER
-    PRE7_DS=/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_17_0_0_pre7_RECO_2026_10_27-ff87f12058bfd417ba6d2a189e1266f4/USER
-    GT=132X_mcRun3_2023_realistic_HI_v12
-    PROMPT_LABEL="13_2_16_patch1 (2023)";;
+    MC_PROMPT=/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_13_2_16_patch1_RECO_2026_10_27-4306658f456933c14c26b2d86ea9ab26/USER
+    MC_RERECO=/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_17_0_0_RECO_2026_11_20-62a5f9c62f9bc79d872829fe458ba4d1/USER
+    MC_PRE7=/MinBias_Drum5F_5p36TeV_hydjet/phys_heavyions-HYDJET_2023Run3_CMSSW_17_0_0_pre7_RECO_2026_10_27-ff87f12058bfd417ba6d2a189e1266f4/USER
+    MC_GT=132X_mcRun3_2023_realistic_HI_v12
+    MC_PROMPT_REL=13_2_16_patch1
+    DATA_PROMPT=/HIPhysicsRawPrime0/phys_heavyions_ops-HIPhysicsRawPrime0_HIRun2023A_PromptReco_v2_2026_10_24-acd0e31c4b25dd82f9007318362a8c33/USER
+    DATA_RERECO_PGT=/HIPhysicsRawPrime0/phys_heavyions_ops-HIPhysicsRawPrime0_HIRun2023A_CMSSW_17_0_0_170X_dataRun3_Prompt_v2_2026_10_24-c745711fa13e5293b9ff16449413f54d/USER
+    DATA_RERECO_OGT=/HIPhysicsRawPrime0/phys_heavyions_ops-HIPhysicsRawPrime0_HIRun2023A_CMSSW_17_0_0_170X_dataRun3_v3_2026_10_24-5da7021447ca55c818f1d20d2d8e60ff/USER;;
   2024)
-    PROMPT_DS=/Hydjet_MinBias_TuneCELLO_5p36TeV_pythia8/phys_heavyions-HYDJET_2024Run3_CMSSW_14_1_9_patch3_RECO_2026_10_27-943058267aeaca9e9e8960ca73d2b070/USER
-    RERECO_DS=/Hydjet_MinBias_TuneCELLO_5p36TeV_pythia8/phys_heavyions-HYDJET_2024Run3_CMSSW_17_0_0_RECO_2026_11_20-f9895636d4268b8129fbb0943a15b27a/USER
-    PRE7_DS=/Hydjet_MinBias_TuneCELLO_5p36TeV_pythia8/phys_heavyions-HYDJET_2024Run3_CMSSW_17_0_0_pre7_RECO_2026_10_27-b3a7db92047aba45682b092f1c5750de/USER
-    GT=141X_mcRun3_2024_realistic_HI_v20
-    PROMPT_LABEL="14_1_9_patch3 (2024)";;
+    MC_PROMPT=/Hydjet_MinBias_TuneCELLO_5p36TeV_pythia8/phys_heavyions-HYDJET_2024Run3_CMSSW_14_1_9_patch3_RECO_2026_10_27-943058267aeaca9e9e8960ca73d2b070/USER
+    MC_RERECO=/Hydjet_MinBias_TuneCELLO_5p36TeV_pythia8/phys_heavyions-HYDJET_2024Run3_CMSSW_17_0_0_RECO_2026_11_20-f9895636d4268b8129fbb0943a15b27a/USER
+    MC_PRE7=/Hydjet_MinBias_TuneCELLO_5p36TeV_pythia8/phys_heavyions-HYDJET_2024Run3_CMSSW_17_0_0_pre7_RECO_2026_10_27-b3a7db92047aba45682b092f1c5750de/USER
+    MC_GT=141X_mcRun3_2024_realistic_HI_v20
+    MC_PROMPT_REL=14_1_9_patch3
+    DATA_PROMPT=/HIPhysicsRawPrime0/phys_heavyions_ops-HIPhysicsRawPrime0_HIRun2024B_PromptReco_v2_2026_10_24-acd0e31c4b25dd82f9007318362a8c33/USER
+    DATA_RERECO_PGT=/HIPhysicsRawPrime0/phys_heavyions_ops-HIPhysicsRawPrime0_HIRun2024B_CMSSW_17_0_0_170X_dataRun3_Prompt_v2_2026_10_24-d93ebe3fb315e450fae22546bf235975/USER
+    DATA_RERECO_OGT=/HIPhysicsRawPrime0/phys_heavyions_ops-HIPhysicsRawPrime0_HIRun2024B_CMSSW_17_0_0_170X_dataRun3_v3_2026_10_24-e2506aab423f82e4017a16fd2fdccf3b/USER;;
   *) echo "year must be 2023 or 2024"; exit 1;;
 esac
-RERECO_LABEL="17_0_0 (${YEAR})"
-# reference sample (denominator of the ratios): prompt reco, or the 17_0_0_pre7 rereco
-if [ "$COMPARE" = pre7 ]; then
-  REF=pre7;   REF_DS=$PRE7_DS;   REF_LABEL="17_0_0_pre7 (${YEAR})"
-else
-  REF=prompt; REF_DS=$PROMPT_DS; REF_LABEL="$PROMPT_LABEL"
-fi
+# data GlobalTags as given for these reprocessings; check with: edmProvDump <file> | grep -i -A1 globaltag
+DATA_PROMPT_GT=170X_dataRun3_Prompt_v2
+DATA_OFFLINE_GT=170X_dataRun3_v4   # NOTE: the dataset names say 170X_dataRun3_v3; verify and override with GT_1 if needed
+
+# ---------------------------------------------------------------- comparison: sample 1 (numerator) vs sample 2 (reference)
+case $COMPARE in
+  prompt)      KIND=mc;   OUTSUF=""
+               N1=rereco;           DS1=$MC_RERECO;       G1=$MC_GT;           L1="17_0_0 (${YEAR})"
+               N2=prompt;           DS2=$MC_PROMPT;       G2=$MC_GT;           L2="${MC_PROMPT_REL} (${YEAR})";;
+  pre7)        KIND=mc;   OUTSUF="_pre7"
+               N1=rereco;           DS1=$MC_RERECO;       G1=$MC_GT;           L1="17_0_0 (${YEAR})"
+               N2=pre7;             DS2=$MC_PRE7;         G2=$MC_GT;           L2="17_0_0_pre7 (${YEAR})";;
+  data_prompt) KIND=data; OUTSUF="_data_prompt"
+               N1=rereco_promptgt;  DS1=$DATA_RERECO_PGT; G1=$DATA_PROMPT_GT;  L1="ReReco, prompt GT (${YEAR})"
+               N2=prompt;           DS2=$DATA_PROMPT;     G2=$DATA_PROMPT_GT;  L2="Prompt reco (${YEAR})";;
+  data_gt)     KIND=data; OUTSUF="_data_gt"
+               N1=rereco_offlinegt; DS1=$DATA_RERECO_OGT; G1=$DATA_OFFLINE_GT; L1="ReReco, offline GT (${YEAR})"
+               N2=rereco_promptgt;  DS2=$DATA_RERECO_PGT; G2=$DATA_PROMPT_GT;  L2="ReReco, prompt GT (${YEAR})";;
+  *) echo "COMPARE must be prompt, pre7, data_prompt or data_gt"; exit 1;;
+esac
+G1=${GT_1:-$G1}; G2=${GT_2:-$G2}
+OUT=${3:-/tmp/$USER/compare${YEAR}${OUTSUF}}
 
 TRACKS=${TRACKS:-general}
 case $TRACKS in
@@ -64,72 +88,93 @@ esac
 TESTDIR=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$OUT"
 cd "$OUT"
+echo "Comparison: $L1 [$N1, GT $G1]  vs  $L2 [$N2, GT $G2], $TRACKS tracks"
 echo "Output in $OUT"
 
-# PLOTS_ONLY=1 ./run_compare_local.sh YEAR [NFILES] [OUTDIR] : only redo the plots from existing outputs
 if [ "${PLOTS_ONLY:-0}" != 1 ]; then
 
-if [ -s common_events.txt ] && [ -s ${REF}_files.txt ] && [ -s rereco_files.txt ] && [ "$(cat nfiles.txt 2>/dev/null)" = "$NFILES" ]; then
+# ---------------------------------------------------------------- 1+2. file lists and common events
+if [ -s common_events.txt ] && [ -s ${N1}_files.txt ] && [ -s ${N2}_files.txt ] && [ "$(cat nfiles.txt 2>/dev/null)" = "$NFILES" ]; then
   echo "Reusing file and event lists in $OUT (NFILES=$NFILES): $(wc -l < common_events.txt) common events"
 else
-
-# 1. file lists: job numbers 1..NFILES, as local EOS paths
-for s in $REF rereco; do
-  ds=$REF_DS; [ $s = rereco ] && ds=$RERECO_DS
-  dasgoclient -query="file dataset=$ds instance=prod/phys03" \
-    | awk -v n="$NFILES" '{ m = $0; sub(/.*_/, "", m); sub(/\.root$/, "", m); if (m ~ /^[0-9]+$/ && m+0 >= 1 && m+0 <= n) print }' \
-    | sort -V | sed 's|^|file:/eos/cms|' > ${s}_files.txt
-  echo "$s: $(wc -l < ${s}_files.txt) files"
-  [ -s ${s}_files.txt ] || { echo "no files found for $s"; exit 1; }
-done
-
-# 2. events common to both samples
-for s in $REF rereco; do
-  for f in $(sed 's|^file:||' ${s}_files.txt); do edmFileUtil -e "$f"; done \
-    | awk 'NF==4 && $3>0 {print $1":"$2":"$3}' | sort > ${s}_events.txt
-done
-comm -12 ${REF}_events.txt rereco_events.txt > common_events.txt
-echo "events: $REF $(wc -l < ${REF}_events.txt), rereco $(wc -l < rereco_events.txt), common $(wc -l < common_events.txt)"
-[ -s common_events.txt ] || { echo "no common events"; exit 1; }
-echo "$NFILES" > nfiles.txt
-
-fi # lists
-
-# check the track collection exists in both samples
-if [ "$TRACKS" = pixel ]; then
-  for s in $REF rereco; do
-    f=$(head -1 ${s}_files.txt | sed 's|^file:||')
-    edmDumpEventContent "$f" | grep -q hiConformalPixelTracks \
-      || { echo "hiConformalPixelTracks not found in $s file $f"; exit 1; }
+  for s in $N1 $N2; do
+    ds=$DS1; [ $s = $N2 ] && ds=$DS2
+    dasgoclient -query="file dataset=$ds instance=prod/phys03" \
+      | awk -v n="$NFILES" '{ m = $0; sub(/.*_/, "", m); sub(/\.root$/, "", m); if (m ~ /^[0-9]+$/ && m+0 >= 1 && m+0 <= n) print }' \
+      | sort -V | sed 's|^|file:/eos/cms|' > ${s}_files.txt
+    echo "$s: $(wc -l < ${s}_files.txt) files"
+    [ -s ${s}_files.txt ] || { echo "no files found for $s"; exit 1; }
   done
+  for s in $N1 $N2; do
+    for f in $(sed 's|^file:||' ${s}_files.txt); do edmFileUtil -e "$f"; done \
+      | awk 'NF==4 && $3>0 {print $1":"$2":"$3}' | sort > ${s}_events.txt
+  done
+  comm -12 ${N1}_events.txt ${N2}_events.txt > common_events.txt
+  echo "events: $N1 $(wc -l < ${N1}_events.txt), $N2 $(wc -l < ${N2}_events.txt), common $(wc -l < common_events.txt)"
+  [ -s common_events.txt ] || { echo "no common events"; exit 1; }
+  echo "$NFILES" > nfiles.txt
 fi
 
-# 3. cmsRun on both samples in parallel, common events only
+# ---------------------------------------------------------------- input format and collections
+declare -A STYPE MVA
+for s in $N1 $N2; do
+  f=$(head -1 ${s}_files.txt | sed 's|^file:||')
+  edmDumpEventContent "$f" > ${s}_content.txt
+  if [ $KIND = mc ]; then
+    STYPE[$s]=MC_RecoDebug
+  elif grep -q '"generalTracks"' ${s}_content.txt; then
+    STYPE[$s]=Data_Reco_AOD
+  elif grep -q '"packedPFCandidates"' ${s}_content.txt; then
+    STYPE[$s]=Data_MiniAOD
+  else
+    echo "cannot tell the data format of $s ($f): no generalTracks or packedPFCandidates"; exit 1
+  fi
+  MVA[$s]=True
+  if [ ${STYPE[$s]} != Data_MiniAOD ] && ! grep -qE '"generalTracks" +"MVAValues"' ${s}_content.txt; then
+    MVA[$s]=False; echo "$s: no generalTracks:MVAValues, running anaTrack without MVA"
+  fi
+  if [ $TRACKS = pixel ]; then
+    pixcoll=hiConformalPixelTracks; [ ${STYPE[$s]} = Data_MiniAOD ] && pixcoll=hiPixelTracks
+    grep -q "\"$pixcoll\"" ${s}_content.txt || { echo "$pixcoll not found in $s file $f"; exit 1; }
+  fi
+  echo "$s: ${STYPE[$s]}"
+done
+if [ "${STYPE[$N1]}" != "${STYPE[$N2]}" ]; then
+  echo "WARNING: different data formats (${STYPE[$N1]} vs ${STYPE[$N2]}): MiniAOD stores tracks with reduced precision,"
+  echo "         so differences can come from the format and not from the reconstruction."
+fi
+
+# ---------------------------------------------------------------- 3. cmsRun on both samples in parallel, common events only
 cp "$TESTDIR"/CentralityTable_HFtowers200_DataPbPb_periHYDJETshape_run3v1302x04_offline_Nominal.db .
-for s in $REF rereco; do
-  cmsRun "$TESTDIR"/run_PbPb_cfg.py sample=MC_RecoDebug n=-1 applyHLT=False saveTree=True globalTag=$GT usePixelTrks=$PIXOPT \
+for s in $N1 $N2; do
+  gt=$G1; [ $s = $N2 ] && gt=$G2
+  cmsRun "$TESTDIR"/run_PbPb_cfg.py sample=${STYPE[$s]} n=-1 applyHLT=False saveTree=True globalTag=$gt \
+    usePixelTrks=$PIXOPT trackMVA=${MVA[$s]} \
     inputFiles_load=${s}_files.txt eventList=common_events.txt outputFile=trk_${s}${SUF}.root > ${s}${SUF}.log 2>&1 &
 done
-echo "cmsRun running ($TRACKS tracks; logs: $OUT/${REF}${SUF}.log, $OUT/rereco${SUF}.log) ..."
+echo "cmsRun running (logs: $OUT/${N1}${SUF}.log, $OUT/${N2}${SUF}.log) ..."
 wait
-grep -E "Exception|TrigReport Events total|TrigReport.*(HITrackCorrections|anaTrack)" ${REF}${SUF}.log rereco${SUF}.log || true
-if grep -q "Exception" ${REF}${SUF}.log rereco${SUF}.log; then echo "cmsRun failed, see logs"; exit 1; fi
+grep -E "Exception|TrigReport Events total|TrigReport.*(HITrackCorrections|anaTrack)" ${N1}${SUF}.log ${N2}${SUF}.log || true
+if grep -q "Exception" ${N1}${SUF}.log ${N2}${SUF}.log; then echo "cmsRun failed, see logs"; exit 1; fi
 
 fi # PLOTS_ONLY
 
-# 4. plots
+# ---------------------------------------------------------------- 4. plots
 cd "$TESTDIR"/plottingMacro
-for c in "0 100" "0 10" "70 90"; do
-  set -- $c
-  root -l -b -q "plotHist_CompareTwoSamples.C(\"$OUT/trk_rereco${SUF}.root\",\"$OUT/trk_${REF}${SUF}.root\",\"$RERECO_LABEL\",\"$REF_LABEL\",$1,$2,\"$OUT/plots/${PFX}Efficiency_cent${1}to${2}\",\"$TRACKS\")"
-done
+F1="$OUT/trk_${N1}${SUF}.root"; F2="$OUT/trk_${N2}${SUF}.root"
+if [ $KIND = mc ]; then
+  for c in "0 100" "0 10" "70 90"; do
+    set -- $c
+    root -l -b -q "plotHist_CompareTwoSamples.C(\"$F1\",\"$F2\",\"$L1\",\"$L2\",$1,$2,\"$OUT/plots/${PFX}Efficiency_cent${1}to${2}\",\"$TRACKS\")"
+  done
+fi
 for c in "0 100" "0 10" "30 50" "70 90"; do
   set -- $c
-  root -l -b -q "plotTrackQuantities_TwoSamples.C(\"$OUT/trk_rereco${SUF}.root\",\"$OUT/trk_${REF}${SUF}.root\",\"$RERECO_LABEL\",\"$REF_LABEL\",$1,$2,\"$OUT/plots/${PFX}TrackQuantities_cent${1}to${2}\",\"$TRACKS\")"
+  root -l -b -q "plotTrackQuantities_TwoSamples.C(\"$F1\",\"$F2\",\"$L1\",\"$L2\",$1,$2,\"$OUT/plots/${PFX}TrackQuantities_cent${1}to${2}\",\"$TRACKS\")"
 done
 echo "Done. Plots in $OUT/plots/"
 
-# COPY_TO=/eos/user/... : copy plots, logs and printout-relevant files to a persistent place
+# ---------------------------------------------------------------- copy to a persistent place
 if [ -n "${COPY_TO:-}" ]; then
   DEST="$COPY_TO/$(basename "$OUT")"
   mkdir -p "$DEST"
