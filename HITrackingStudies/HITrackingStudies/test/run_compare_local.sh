@@ -55,7 +55,7 @@ case $YEAR in
 esac
 # data GlobalTags as given for these reprocessings; check with: edmProvDump <file> | grep -i -A1 globaltag
 DATA_PROMPT_GT=170X_dataRun3_Prompt_v2
-DATA_OFFLINE_GT=170X_dataRun3_v4   # NOTE: the dataset names say 170X_dataRun3_v3; verify and override with GT_1 if needed
+DATA_OFFLINE_GT=170X_dataRun3_v3   # GT of the offline-GT rereco (v4 gives the same ntuple: tracks are read from file)
 
 # ---------------------------------------------------------------- comparison: sample 1 (numerator) vs sample 2 (reference)
 case $COMPARE in
