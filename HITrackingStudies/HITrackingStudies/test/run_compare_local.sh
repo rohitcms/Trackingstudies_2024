@@ -155,7 +155,10 @@ done
 echo "cmsRun running (logs: $OUT/${N1}${SUF}.log, $OUT/${N2}${SUF}.log) ..."
 wait
 grep -E "Exception|TrigReport Events total|TrigReport.*(HITrackCorrections|anaTrack)" ${N1}${SUF}.log ${N2}${SUF}.log || true
-if grep -q "Exception" ${N1}${SUF}.log ${N2}${SUF}.log; then echo "cmsRun failed, see logs"; exit 1; fi
+if grep -q "Exception" ${N1}${SUF}.log ${N2}${SUF}.log; then
+  for s in $N1 $N2; do echo "== $s${SUF}.log:"; sed -n '/Begin Fatal Exception/,/End Fatal Exception/p' ${s}${SUF}.log | head -40; done
+  echo "cmsRun failed, see logs"; exit 1
+fi
 
 fi # PLOTS_ONLY
 
