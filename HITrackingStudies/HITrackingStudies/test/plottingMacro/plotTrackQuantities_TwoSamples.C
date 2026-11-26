@@ -20,6 +20,9 @@
 ///Run:
 ///  root -l -b -q 'plotTrackQuantities_TwoSamples.C("trk_rereco.root","trk_prompt.root","ReReco","Prompt",0,10)'
 ///Arguments: file1, file2, label1, label2, cent_min, cent_max (in %), [output directory], [track type]
+///Normalization (last argument): "none" (default) = raw track counts, for two reconstructions of the same events;
+///  "event" = tracks per event; "area" = unit area per unit x. Use "event" or "area" for samples with different events
+///  (e.g. 2023 vs 2024); the uncertainties are then automatically those of independent samples.
 ///Track type: "general" (default) = highPurity generalTracks; "pixel" = all tracks in the tree, for files made
 ///with cmsRun ... usePixelTrks=True (pixel tracks have no highPurity flag)
 
@@ -55,6 +58,7 @@ namespace trkcmp {
 const char* treeName = "anaTrack/trackTree";
 bool  hpOnly = true;        // use only highPurity tracks (set from the track type argument)
 TString trackText = "";     // track-type label drawn on the plots
+TString yAxisTitle = "Number of tracks";
 float ptMin  = 0.0;         // pT range of the selected tracks (GeV)
 float ptMax  = 99999.;
 double ratioHalfRange = -1; // ratio panel shown as 1 +- this; <= 0 means automatic
@@ -184,7 +188,7 @@ void drawPanel(TH1D* h1, TH1D* h2, TH1D* r, const TrkVar& v, const TString& labe
       if (h->GetBinContent(b) > 0) ymin = std::min(ymin, h->GetBinContent(b));
   if (ymin > ymax) ymin = 1e-3 * ymax;
   h1->SetTitle("");
-  h1->GetYaxis()->SetTitle("Number of tracks");
+  h1->GetYaxis()->SetTitle(yAxisTitle);
   h1->GetYaxis()->SetRangeUser(0.5 * ymin, 8.0 * ymax);
   h1->GetYaxis()->SetTitleSize(0.06); h1->GetYaxis()->SetTitleOffset(1.25); h1->GetYaxis()->SetLabelSize(0.055);
   h1->GetXaxis()->SetLabelSize(0);
@@ -227,9 +231,13 @@ void drawPanel(TH1D* h1, TH1D* h2, TH1D* r, const TrkVar& v, const TString& labe
 void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
                                     TString label1 = "Sample 1", TString label2 = "Sample 2",
                                     int cent_min = 0, int cent_max = 10, TString outDir = "",
-                                    TString trackType = "general")
+                                    TString trackType = "general", TString norm = "none")
 {
   if (trackType != "general" && trackType != "pixel") { std::cerr << "ERROR: track type must be general or pixel" << std::endl; return; }
+  if      (norm == "none")  yAxisTitle = "Number of tracks";
+  else if (norm == "event") yAxisTitle = "Tracks per event";
+  else if (norm == "area")  yAxisTitle = "Normalized distribution";
+  else { std::cerr << "ERROR: normalization must be none, event or area" << std::endl; return; }
   hpOnly = (trackType == "general");
   trackText = hpOnly ? "highPurity general tracks" : "Pixel tracks";
   gStyle->SetOptStat(0);
@@ -260,7 +268,10 @@ void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
   }
   std::cout << "Events: " << ev1.size() << " (" << label1 << "), " << ev2.size() << " (" << label2 << "), " << nCommon << " in both" << std::endl;
   std::cout << "In " << centText << ": " << nPass1 << " (" << label1 << "), " << nPass2 << " (" << label2 << "), " << nPassBoth << " in both" << std::endl;
-  if ((long) ev1.size() != nCommon || (long) ev2.size() != nCommon)
+  if (nCommon == 0) {
+    std::cout << "No common events: independent samples, the ratio uncertainties are those of independent samples." << std::endl;
+    if (norm == "none") std::cout << "WARNING: raw counts of different event samples are not comparable; use normalization event or area." << std::endl;
+  } else if ((long) ev1.size() != nCommon || (long) ev2.size() != nCommon)
     std::cout << "WARNING: the files do not contain the same events; unmatched events count as zero in the other sample."
               << " Use eventList in cmsRun to process common events only." << std::endl;
   if (nPass1 != nPassBoth || nPass2 != nPassBoth)
@@ -285,16 +296,34 @@ void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
     for (auto& e : ev2) for (int b = 0; b <= nb + 1; b++) S2[b] += e.second.counts[off + b];
     if (k == kPt) { for (int b = 0; b <= nb + 1; b++) { sel1 += S1[b]; sel2 += S2[b]; } }
 
-    // event-to-event spread of the counts (single samples) and paired ratio terms
+    // normalization: value = S / D (event: D = events in the class; area: D = tracks in range, then per unit x)
+    double T1 = 0., T2 = 0.;
+    for (int b = 1; b <= nb; b++) { T1 += S1[b]; T2 += S2[b]; }
+    const double D1 = (norm == "event") ? nPass1 : (norm == "area" ? T1 : 1.);
+    const double D2 = (norm == "event") ? nPass2 : (norm == "area" ? T2 : 1.);
+
+    // uncertainties with events as the independent units (delta method):
+    //  single sample : relVar = n/(n-1) * sum_e (c_e/S - t_e)^2, t_e = d_e/D (normalized) or 1/n (raw counts)
+    //  ratio         : relVar = N/(N-1) * sum_e (c1_e/S1 - t1_e - c2_e/S2 + t2_e)^2, t_e = d_e/D (normalized) or 0 (raw)
+    //  events present in only one sample count as zero in the other, so independent samples are handled too
     std::vector<double> V1(nb + 2, 0.), V2(nb + 2, 0.), ZR(nb + 2, 0.);
     for (auto& key : keys) {
       auto i1 = ev1.find(key), i2 = ev2.find(key);
-      const std::vector<float>& c1 = (i1 != ev1.end()) ? i1->second.counts : zeros;
-      const std::vector<float>& c2 = (i2 != ev2.end()) ? i2->second.counts : zeros;
+      const bool in1 = i1 != ev1.end(), in2 = i2 != ev2.end();
+      const std::vector<float>& c1 = in1 ? i1->second.counts : zeros;
+      const std::vector<float>& c2 = in2 ? i2->second.counts : zeros;
+      double d1 = 0., d2 = 0.;
+      if (norm == "event") { d1 = (in1 && i1->second.passCent) ? 1. : 0.; d2 = (in2 && i2->second.passCent) ? 1. : 0.; }
+      if (norm == "area")  { for (int b = 1; b <= nb; b++) { d1 += c1[off + b]; d2 += c2[off + b]; } }
+      const double t1 = (norm == "none") ? 0. : (D1 > 0 ? d1 / D1 : 0.);
+      const double t2 = (norm == "none") ? 0. : (D2 > 0 ? d2 / D2 : 0.);
+      const double s1 = (norm == "none") ? 1. / n1 : t1;  // single-sample term
+      const double s2 = (norm == "none") ? 1. / n2 : t2;
       for (int b = 1; b <= nb; b++) {
-        if (i1 != ev1.end()) V1[b] += std::pow(c1[off + b] - S1[b] / n1, 2);
-        if (i2 != ev2.end()) V2[b] += std::pow(c2[off + b] - S2[b] / n2, 2);
-        if (S1[b] > 0 && S2[b] > 0) ZR[b] += std::pow(c1[off + b] / S1[b] - c2[off + b] / S2[b], 2);
+        const double f1 = S1[b] > 0 ? c1[off + b] / S1[b] : 0., f2 = S2[b] > 0 ? c2[off + b] / S2[b] : 0.;
+        if (in1) V1[b] += std::pow(f1 - s1, 2);
+        if (in2) V2[b] += std::pow(f2 - s2, 2);
+        if (S1[b] > 0 && S2[b] > 0) ZR[b] += std::pow(f1 - t1 - f2 + t2, 2);
       }
     }
 
@@ -303,15 +332,17 @@ void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
     TH1D* r  = new TH1D(Form("ratio_%s", v.name), "", nb, v.xmin, v.xmax);
     for (TH1D* h : {h1, h2, r}) h->SetDirectory(0);
     std::vector<double> errRatio;
+    const double bw = (norm == "area") ? (v.xmax - v.xmin) / nb : 1.;
     for (int b = 1; b <= nb; b++) {
-      double e1 = std::sqrt(V1[b] * (n1 > 1 ? n1 / (n1 - 1) : 1.));
-      double e2 = std::sqrt(V2[b] * (n2 > 1 ? n2 / (n2 - 1) : 1.));
-      h1->SetBinContent(b, S1[b]); h1->SetBinError(b, e1);
-      h2->SetBinContent(b, S2[b]); h2->SetBinError(b, e2);
+      const double val1 = D1 > 0 ? S1[b] / D1 / bw : 0., val2 = D2 > 0 ? S2[b] / D2 / bw : 0.;
+      const double rel1 = std::sqrt(V1[b] * (n1 > 1 ? n1 / (n1 - 1) : 1.));
+      const double rel2 = std::sqrt(V2[b] * (n2 > 1 ? n2 / (n2 - 1) : 1.));
+      h1->SetBinContent(b, val1); h1->SetBinError(b, val1 * rel1);
+      h2->SetBinContent(b, val2); h2->SetBinError(b, val2 * rel2);
       if (S1[b] <= 0 || S2[b] <= 0) { r->SetBinContent(b, -10); r->SetBinError(b, 0); continue; } // hidden
-      double R = S1[b] / S2[b];
-      double eCorr = R * std::sqrt(ZR[b] * fN);
-      double eUnc  = R * std::sqrt(std::pow(e1 / S1[b], 2) + std::pow(e2 / S2[b], 2));
+      const double R = val1 / val2;
+      const double eCorr = R * std::sqrt(ZR[b] * fN);
+      const double eUnc  = R * std::sqrt(rel1 * rel1 + rel2 * rel2);
       r->SetBinContent(b, R); r->SetBinError(b, eCorr);
       if (eUnc > 0) errRatio.push_back(eCorr / eUnc);
     }
@@ -322,6 +353,9 @@ void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
   fout.Close();
   std::cout << "Selected tracks: " << sel1 << " (" << label1 << "), " << sel2 << " (" << label2 << "), ratio "
             << (sel2 > 0 ? (double) sel1 / sel2 : 0.) << std::endl;
+  std::cout << "Selected tracks per event: " << (nPass1 > 0 ? (double) sel1 / nPass1 : 0.) << " (" << label1 << "), "
+            << (nPass2 > 0 ? (double) sel2 / nPass2 : 0.) << " (" << label2 << "), ratio "
+            << (sel2 > 0 && nPass1 > 0 ? ((double) sel1 / nPass1) / ((double) sel2 / nPass2) : 0.) << std::endl;
 
   // ---- rows of three
   for (auto& row : rows) {
@@ -342,7 +376,7 @@ void run(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
 void plotTrackQuantities_TwoSamples(TString fileName1 = "trk1.root", TString fileName2 = "trk2.root",
                                     TString label1 = "Sample 1", TString label2 = "Sample 2",
                                     int cent_min = 0, int cent_max = 10, TString outDir = "",
-                                    TString trackType = "general")
+                                    TString trackType = "general", TString norm = "none")
 {
-  trkcmp::run(fileName1, fileName2, label1, label2, cent_min, cent_max, outDir, trackType);
+  trkcmp::run(fileName1, fileName2, label1, label2, cent_min, cent_max, outDir, trackType, norm);
 }
